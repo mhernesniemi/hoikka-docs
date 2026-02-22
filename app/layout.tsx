@@ -7,7 +7,7 @@ import "./custom.css";
 export const metadata = {
 	title: "Hoikka Documentation",
 	icons: {
-		icon: "/favicon.svg"
+		icon: "/face.png"
 	}
 };
 

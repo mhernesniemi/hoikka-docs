@@ -1,0 +1,66 @@
+
+# CI & Observability
+
+## Unit Tests
+
+Unit tests use [Vitest](https://vitest.dev/) and live alongside the source files they cover (e.g. `utils.ts` → `utils.test.ts`).
+
+```bash
+# Run all unit tests
+bun run test
+
+# Watch mode during development
+bun run test:unit
+```
+
+Test files cover pure utility functions such as price formatting, tax calculation, shipping rules, promotion logic, slug generation, and database error handling. Tests are co-located with their source under `src/lib/` and `src/lib/server/`.
+
+## End-to-End Tests
+
+E2E tests use [Playwright](https://playwright.dev/) and run against a Vercel preview deployment.
+
+```bash
+# Run locally (requires BASE_URL)
+BASE_URL=http://localhost:5173 bun run test:e2e
+```
+
+Test files live in the project root under `tests/`.
+
+## Logging
+
+Server-side logging uses `console.error` in `hooks.server.ts`. The `handleError` hook catches uncaught errors, assigns a unique `errorId`, and logs structured context (URL, method, stack trace) before returning a generic message to the client.
+
+```typescript
+// hooks.server.ts
+export const handleError: HandleServerError = async ({ error, event, status, message }) => {
+	const errorId = crypto.randomUUID();
+	console.error("[error]", { id: errorId, status, url: event.url.pathname, error });
+	return { message: "An unexpected error occurred", errorId };
+};
+```
+
+## Telemetry
+
+OpenTelemetry tracing is integrated via `src/lib/server/telemetry.ts`. The `withSpan` helper wraps async operations with named spans:
+
+```typescript
+import { withSpan } from "$lib/server/telemetry";
+
+const user = await withSpan("auth.validate_session", async () => {
+	// ...
+});
+```
+
+Database queries are also traced through a custom Drizzle `OTelLogger` in `src/lib/server/db/index.ts`, which emits a span for each query with the SQL statement and parameter count.
+
+## CI Workflows
+
+Three GitHub Actions workflows run on pull requests to `main`:
+
+| Workflow | File | Purpose |
+|----------|------|---------|
+| **CI** | `.github/workflows/ci.yml` | Linting (Prettier + ESLint) and type checking (`svelte-check`) |
+| **Unit Tests** | `.github/workflows/unit-tests.yml` | Runs `bun run test` |
+| **E2E Tests** | `.github/workflows/e2e.yml` | Runs Playwright against the Vercel preview deployment |
+
+All workflows use `oven-sh/setup-bun@v2` with the latest Bun version.

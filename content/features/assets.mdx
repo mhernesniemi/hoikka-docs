@@ -78,10 +78,15 @@ Vercel Image Optimization resizes and optimizes images on the fly:
 ### Helper Function
 
 ```typescript filename="src/lib/image.ts"
+import { dev } from "$app/environment";
+
 export function imageUrl(source: string, width: number, quality = 75): string {
+  if (dev) return source;
   return `/_vercel/image?url=${encodeURIComponent(source)}&w=${width}&q=${quality}`;
 }
 ```
+
+The `/_vercel/image` endpoint only exists on Vercel's infrastructure. In local development, the helper returns the raw Vercel Blob URL directly. Images will be unoptimized (full-size) locally — this is expected.
 
 ### Usage in Components
 

@@ -3,5 +3,6 @@ export default {
 	database: 'Database',
 	services: 'Services',
 	providers: 'Providers',
-	localization: 'Localization'
+	localization: 'Localization',
+	'testing-and-ci': 'CI & Observability'
 };

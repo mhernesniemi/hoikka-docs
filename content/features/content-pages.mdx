@@ -11,7 +11,9 @@ Simple CMS for static pages like About, FAQ, Terms of Service, and similar.
 await contentPageService.create({
   title: "About Us",
   slug: "about-us",
-  body: "<p>Welcome to our store...</p>",
+  body: "Welcome to our store...",
   published: true
 });
 ```
+
+The `body` field stores rich text HTML from the Tiptap editor in the admin panel.

@@ -7,9 +7,13 @@
 
 .hoikka-logo {
 	font-family: monospace;
-	color: pink;
+	color: #1a1a1a;
 	font-size: 18px;
 	font-weight: 700;
+}
+
+.dark .hoikka-logo {
+	color: pink;
 }
 
 /* Code blocks — softer, warm-tinted backgrounds */

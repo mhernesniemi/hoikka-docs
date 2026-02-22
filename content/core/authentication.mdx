@@ -1,0 +1,198 @@
+
+# Authentication
+
+Hoikka uses [Neon Auth](https://neon.tech/docs/guides/neon-auth) for authentication. Neon Auth runs alongside your Neon Postgres database and provides email/password login, OAuth (Google), email verification, and password reset out of the box.
+
+## Setup
+
+### Environment Variables
+
+```bash
+NEON_AUTH_BASE_URL=    # Neon Auth service URL
+NEON_AUTH_COOKIE_SECRET=  # Secret for secure session cookies
+```
+
+Enable Auth in your [Neon Console](https://console.neon.tech) to get these credentials. When using the Vercel deploy button, connect Neon as an integration and enable Auth from the Neon dashboard.
+
+### First-Time Admin Setup
+
+On first visit to `/admin`, you are redirected to `/admin/setup` where you create the initial admin account. This:
+
+1. Creates a user via Neon Auth
+2. Sets the `role` to `admin` and marks email as verified
+3. Redirects to the admin login page
+
+Once an admin exists, the setup page is disabled.
+
+## How It Works
+
+### Auth Proxy
+
+All auth requests go through a proxy route at `/api/auth/[...path]` that forwards to the Neon Auth service. This ensures session cookies are set on the application's domain.
+
+```
+Client → /api/auth/* → Neon Auth service
+                     ← session cookies
+```
+
+### Session Validation
+
+On every request, `hooks.server.ts` validates the session:
+
+```typescript
+// hooks.server.ts — sessionHandler
+const response = await event.fetch(`${NEON_AUTH_BASE_URL}/get-session`);
+const data = await response.json();
+
+event.locals.user = {
+	id: data.user.id,
+	name: data.user.name,
+	email: data.user.email,
+	role: data.user.role, // "admin", "staff", or undefined
+	emailVerified: data.user.emailVerified
+};
+```
+
+### Customer Sync
+
+When a non-admin user logs in, a `customers` record is automatically created (or found) and set on `locals.customer`:
+
+```typescript
+// First login creates the customer record
+// authUserId links to neon_auth."user".id
+// Name is split into firstName / lastName
+event.locals.customer = await customerService.getOrCreateFromAuth(event.locals.user);
+```
+
+Admin and staff users do not get a customer record.
+
+### Locals
+
+After hooks run, every request has access to:
+
+```typescript
+locals.user       // { id, name, email, role?, emailVerified? } | null
+locals.customer   // Customer record | null (null for admins)
+locals.cartToken  // Guest cart cookie | null
+```
+
+## Storefront Auth
+
+### Sign Up
+
+`/sign-up` — email/password or Google OAuth.
+
+```typescript
+import { authClient } from "$lib/auth-client";
+
+// Email sign-up
+await authClient.signUp.email({ name, email, password });
+// → redirects to /verify-email
+
+// Google OAuth
+authClient.signIn.social({ provider: "google", callbackURL: "/" });
+```
+
+After email sign-up, the user must verify their email before accessing protected routes.
+
+### Sign In
+
+`/sign-in` — email/password or Google OAuth.
+
+```typescript
+const result = await authClient.signIn.email({ email, password });
+
+if (result.error) {
+	// show error
+} else if (!result.data.user.emailVerified) {
+	// redirect to /verify-email
+} else {
+	// redirect to original page
+}
+```
+
+### Email Verification
+
+`/verify-email` — 6-digit OTP sent to email.
+
+```typescript
+// Send code
+await authClient.emailOtp.sendVerificationOtp({
+	email,
+	type: "email-verification"
+});
+
+// Verify code
+await authClient.emailOtp.verifyEmail({ email, otp });
+```
+
+### Password Reset
+
+`/forgot-password` — two-step flow:
+
+```typescript
+// Step 1: request code
+await authClient.emailOtp.sendVerificationOtp({
+	email,
+	type: "forget-password"
+});
+
+// Step 2: reset with code
+await authClient.emailOtp.resetPassword({ email, otp, password });
+```
+
+## Route Protection
+
+### Storefront Account Routes
+
+`/account/*` is protected by a layout guard:
+
+```typescript
+// src/routes/(storefront)/account/+layout.server.ts
+if (!locals.user) {
+	throw redirect(303, "/sign-in?redirect=/account");
+}
+if (locals.user.emailVerified === false) {
+	throw redirect(303, `/verify-email?email=${encodeURIComponent(locals.user.email)}`);
+}
+```
+
+### Admin Routes
+
+`/admin/*` requires `role` of `admin` or `staff`:
+
+```typescript
+// src/routes/admin/+layout.server.ts
+if (!locals.user || !["admin", "staff"].includes(locals.user.role ?? "")) {
+	throw redirect(303, "/admin/login");
+}
+```
+
+## Roles
+
+| Role | Access | Customer record |
+| --- | --- | --- |
+| `admin` | Full admin panel | No |
+| `staff` | Full admin panel | No |
+| _(none)_ | Storefront + account | Yes (auto-created) |
+
+Roles are stored on `neon_auth."user".role`. The initial admin is created via `/admin/setup`. Additional admins or staff must be assigned via the database:
+
+```sql
+UPDATE neon_auth."user" SET role = 'staff' WHERE email = 'staff@example.com';
+```
+
+## OAuth (Google)
+
+Google sign-in is configured in the Neon Console. The flow:
+
+```
+1. User clicks "Sign in with Google"
+2. Client calls authClient.signIn.social({ provider: "google" })
+3. Redirects to /api/auth/sign-in/social/google → Neon Auth → Google
+4. Google redirects back with session verifier
+5. hooks.server.ts exchanges verifier for session cookies
+6. User is logged in
+```
+
+OAuth users have their email automatically verified.

@@ -1,5 +1,6 @@
 export default {
 	architecture: 'Architecture',
+	authentication: 'Authentication',
 	database: 'Database',
 	services: 'Services',
 	providers: 'Providers',

@@ -5,7 +5,10 @@ import "nextra-theme-docs/style.css";
 import "./custom.css";
 
 export const metadata = {
-	title: "Hoikka Documentation"
+	title: "Hoikka Documentation",
+	icons: {
+		icon: "/favicon.svg"
+	}
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

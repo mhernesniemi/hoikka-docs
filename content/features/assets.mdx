@@ -122,12 +122,16 @@ Assets are stored in the `assets` table:
 ```typescript
 assets
 ├── id: serial primary key
-├── source: varchar      // Vercel Blob URL
+├── name: varchar        // File name
+├── type: text           // image, video, document, other
 ├── mimeType: varchar    // image/jpeg, image/png, etc.
+├── source: varchar      // Vercel Blob URL
 ├── width: integer
 ├── height: integer
 ├── fileSize: integer
-├── alt: varchar         // Alt text for accessibility
+├── alt: text            // Alt text for accessibility
+├── focalX: numeric      // 0–1 horizontal focal point
+├── focalY: numeric      // 0–1 vertical focal point
 ├── createdAt: timestamp
 ```
 

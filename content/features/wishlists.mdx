@@ -1,0 +1,18 @@
+# Wishlists
+
+Wishlists work for both logged-in customers and guests.
+
+- **Guests** get a wishlist token stored in a cookie
+- **Logged-in customers** have wishlists linked to their account
+- On sign-in, guest wishlists automatically merge into the customer's wishlist
+
+```typescript
+// Toggle a product in the wishlist
+await wishlistService.toggleItem(wishlistId, productId, variantId);
+
+// Get wishlist items
+const items = await wishlistService.getItems(wishlistId);
+
+// Merge guest wishlist on login
+await wishlistService.transferToCustomer(guestToken, customerId);
+```

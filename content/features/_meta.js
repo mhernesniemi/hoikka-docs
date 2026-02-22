@@ -12,5 +12,7 @@ export default {
 	assets: 'Assets',
 	tax: 'Tax',
 	currency: 'Currency',
-	'customer-features': 'Wishlists, Reviews & Pages'
+	wishlists: 'Wishlists',
+	reviews: 'Reviews',
+	'content-pages': 'Content Pages'
 };

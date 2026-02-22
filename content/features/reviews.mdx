@@ -1,0 +1,32 @@
+# Reviews
+
+Customer reviews with a moderation workflow.
+
+## Flow
+
+1. Customer submits a review (rating 1–5, optional comment)
+2. Review is created with `pending` status
+3. Admin approves or rejects in the admin panel
+4. Only `approved` reviews are shown publicly
+
+## Verified Purchases
+
+Reviews automatically get a "verified purchase" badge if the customer has a completed order containing that product.
+
+## Constraints
+
+- One review per customer per product
+- Nickname is required for display
+
+```typescript
+// Submit a review
+await reviewService.create({
+  productId, customerId, nickname, rating, comment
+});
+
+// Moderate (admin)
+await reviewService.moderate(reviewId, "approved");
+
+// Get product rating summary
+const { average, count } = await reviewService.getProductRating(productId);
+```

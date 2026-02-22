@@ -1,0 +1,17 @@
+# Content Pages
+
+Simple CMS for static pages like About, FAQ, Terms of Service, and similar.
+
+- Each page has a `title`, `slug`, `body` (rich text), and optional `imageUrl`
+- `published` flag controls storefront visibility
+- Multi-language support via `content_page_translations`
+
+```typescript
+// Create a page
+await contentPageService.create({
+  title: "About Us",
+  slug: "about-us",
+  body: "<p>Welcome to our store...</p>",
+  published: true
+});
+```

@@ -1,13 +1,27 @@
 
 # Architecture
 
-Hoikka follows a service-oriented architecture with clear separation of concerns.
+Hoikka follows a service-oriented architecture adapted for SvelteKit's patterns.
+
+## Request Flow
+
+```
+Request → hooks.server.ts (auth, cart, wishlist)
+    ↓
++page.server.ts (thin controller: load + actions)
+    ↓
+services/*.ts (business logic + translation resolution)
+    ↓
+db/schema.ts (Drizzle ORM)
+    ↓
++page.svelte (view)
+```
 
 ## Service Pattern
 
-Business logic lives in singleton services:
+Business logic lives in singleton services under `src/lib/server/services/`:
 
-```typescript filename="src/lib/server/services/products.ts"
+```typescript
 class ProductService {
   async getById(id: number) { ... }
   async create(data: NewProduct) { ... }
@@ -17,16 +31,23 @@ class ProductService {
 export const productService = new ProductService();
 ```
 
-Usage in routes:
+Route handlers are thin controllers that wire HTTP to services:
 
-```typescript filename="src/routes/admin/products/[id]/+page.server.ts"
-import { productService } from "$lib/server/services/products";
-
+```typescript
 export const load = async ({ params }) => {
-	const product = await productService.getById(params.id);
-	return { product }; // product.name is already resolved
+  const product = await productService.getById(id);
+  return { product };
+};
+
+export const actions = {
+  update: async ({ request }) => {
+    const formData = await request.formData();
+    await productService.update(id, { name: formData.get("name") });
+  }
 };
 ```
+
+Services resolve translations internally using `src/lib/server/i18n.ts`, returning `Resolved*` types with flat translated fields (e.g. `product.name` instead of `product.translations[0].name`).
 
 ## Provider Pattern
 
@@ -34,49 +55,20 @@ Payments and shipping use a provider pattern for easy swapping:
 
 ```typescript
 interface PaymentProvider {
-	code: string;
-	createPayment(order: Order): Promise<PaymentInfo>;
-	confirmPayment(transactionId: string): Promise<PaymentStatus>;
+  code: string;
+  createPayment(order: Order): Promise<PaymentInfo>;
+  confirmPayment(transactionId: string): Promise<PaymentStatus>;
 }
 
-// Register multiple providers
 const PROVIDERS = new Map<string, PaymentProvider>([
-	["stripe", new StripeProvider()],
-	["klarna", new KlarnaProvider()]
+  ["stripe", new StripeProvider()],
+  ["klarna", new KlarnaProvider()]
 ]);
 ```
 
-## Data Flow
+## Design Principles
 
-```
-Route (load/action)
-    ↓
-Service (business logic + translation resolution)
-    ↓
-Database (Drizzle ORM)
-```
-
-Services resolve translations internally using `src/lib/server/i18n.ts`, returning `Resolved*` types with flat translated fields (e.g. `product.name` instead of `product.translations[0].name`).
-
-## Form Actions
-
-Most mutations use SvelteKit form actions with progressive enhancement:
-
-```typescript filename="+page.server.ts"
-export const actions = {
-	update: async ({ request, params }) => {
-		const formData = await request.formData();
-		await productService.update(params.id, {
-			name: formData.get("name")
-		});
-	}
-};
-```
-
-```svelte
-<!-- +page.svelte -->
-<form method="POST" action="?/update" use:enhance>
-	<input name="name" value={product.name} />
-	<button type="submit">Save</button>
-</form>
-```
+1. **Services are singletons** - One instance shared across requests
+2. **Route handlers are thin** - Validate input and call services
+3. **Views receive typed data** - Via `PageData` from load functions
+4. **Forms use progressive enhancement** - Work without JS via `use:enhance`

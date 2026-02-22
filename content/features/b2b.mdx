@@ -1,0 +1,172 @@
+
+# B2B
+
+Hoikka supports B2B commerce through customer groups. Groups control pricing, tax exemption, and access to private content.
+
+## Customer Groups
+
+Customer groups segment customers for B2B pricing, tax rules, and content access.
+
+```typescript
+import { customerGroupService } from "$lib/server/services/customerGroups";
+
+// Create a group
+const group = await customerGroupService.create({
+	name: "Wholesale",
+	description: "Wholesale customers with volume pricing"
+});
+
+// Manage members
+await customerGroupService.addCustomer(group.id, customerId);
+await customerGroupService.removeCustomer(group.id, customerId);
+
+// Bulk sync membership
+await customerGroupService.setCustomers(group.id, [customerId1, customerId2]);
+
+// Check membership
+const isMember = await customerGroupService.isCustomerInGroup(group.id, customerId);
+```
+
+Group codes are auto-generated from the name (e.g. "Wholesale" becomes `wholesale`). Duplicates get a numeric suffix.
+
+### Admin UI
+
+Customer groups are managed at **Admin > Customers > Groups**. The group detail page lets you edit the name, description, and tax exemption flag, and add or remove members via search.
+
+## Customer Group Pricing
+
+Each product variant can have per-group prices. When a customer belongs to a group with a lower price, they see and pay the group price.
+
+```typescript
+import { productService } from "$lib/server/services/products";
+
+// Set a group price on a variant
+await productService.setGroupPrice(variantId, groupId, 1999); // 19.99 EUR
+
+// Remove a group price
+await productService.removeGroupPrice(variantId, groupId);
+
+// Resolve effective price for a customer
+const price = await productService.resolveEffectivePrice(
+	variant.price, variantId, customerId
+);
+// Returns min(basePrice, ...applicable group prices)
+```
+
+### How Pricing Resolves
+
+1. Customer adds a variant to their cart
+2. The system looks up the customer's group memberships
+3. It finds all group prices for that variant matching those groups
+4. The lowest price wins (compared against the base price)
+5. The resolved price is stored as a snapshot on the order line
+
+If the customer has no groups or no group prices apply, the base price is used.
+
+### Storefront Display
+
+On product detail pages, group prices are resolved and stamped onto variants so the frontend displays the correct price:
+
+```typescript
+// In +page.server.ts — resolves group pricing for logged-in customers
+await stampGroupPrices([product, ...relatedProducts], locals.customer?.id ?? null);
+```
+
+Each variant exposes `effectivePrice` which the storefront uses for display.
+
+### Admin UI
+
+Group pricing is configured on the variant edit page (**Admin > Products > [Product] > Variants > [Variant]**). Toggle group pricing on, then add rows mapping customer groups to prices.
+
+## Private Collections
+
+Collections can be marked private to hide them from the public storefront.
+
+```typescript
+import { collectionService } from "$lib/server/services/collections";
+
+// Create a private collection
+await collectionService.create({
+	name: "Wholesale Catalog",
+	slug: "wholesale-catalog",
+	isPrivate: true
+});
+
+// Public storefront listing excludes private collections
+const publicCollections = await collectionService.list();
+
+// Admin listing includes all collections
+const allCollections = await collectionService.listAll();
+```
+
+### Access Control
+
+| Visitor | Public collection | Private collection |
+| ------- | ----------------- | ------------------ |
+| Anonymous | Visible | Hidden (404) |
+| Logged-in customer | Visible | Hidden (404) |
+| Admin / Staff | Visible | Visible (preview) |
+
+Private collection URLs return a 404 for non-admin visitors. Admin and staff users can preview private collections on the storefront.
+
+### Admin UI
+
+Toggle the **Private** checkbox on the collection detail page (**Admin > Collections > [Collection]**).
+
+## Tax Exemption
+
+Customer groups can be marked as tax-exempt for B2B scenarios where VAT should not be charged.
+
+```typescript
+// Mark a group as tax-exempt
+await customerGroupService.update(groupId, { isTaxExempt: true });
+
+// Check if a customer is tax-exempt (via any of their groups)
+import { taxService } from "$lib/server/services/tax";
+const exempt = await taxService.isCustomerTaxExempt(customerId);
+```
+
+### How It Works
+
+1. A customer group has `isTaxExempt: true`
+2. When the customer adds items to their cart, the order is flagged `isTaxExempt`
+3. Tax is calculated at 0% — the net price is back-calculated from the gross price
+4. The checkout displays "Tax exempt (B2B)" instead of a VAT amount
+
+Customers can store a VAT ID on their profile (`customers.vatId`).
+
+## Group-Restricted Promotions
+
+Promotions can be restricted to a specific customer group:
+
+```typescript
+// A promotion that only applies to wholesale customers
+{
+  code: "WHOLESALE10",
+  type: "percentage",
+  value: 10,
+  customerGroupId: wholesaleGroupId
+}
+```
+
+When `customerGroupId` is set, the promotion only activates for members of that group. When null, it applies to all customers.
+
+## Data Model
+
+```
+CustomerGroup
+├── code (unique, auto-generated)
+├── name
+├── description
+├── isTaxExempt
+└── members → Customer[] (many-to-many)
+
+ProductVariant
+└── groupPrices → { groupId, price }[] (one price per group)
+
+Collection
+└── isPrivate (boolean)
+
+Promotion
+└── customerGroupId (optional, restricts to group)
+```

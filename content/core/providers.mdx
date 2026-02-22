@@ -52,6 +52,22 @@ import { KlarnaProvider } from "./providers/klarna";
 PROVIDERS.set("klarna", new KlarnaProvider());
 ```
 
+### Enabling Stripe
+
+Stripe is the built-in real payment provider. To enable it:
+
+1. Get API keys from [Stripe Dashboard](https://dashboard.stripe.com)
+2. Set environment variables:
+
+```bash
+STRIPE_SECRET_KEY="sk_test_..."
+PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_test_..."
+```
+
+Stripe is already registered in the provider map and seeded in the database. Once the env vars are set, customers will see a card form powered by Stripe Elements at checkout.
+
+Without Stripe keys, the mock payment provider is used instead. Mock payments complete the order immediately without a separate confirmation step.
+
 ## Shipping Providers
 
 ### Interface
@@ -61,7 +77,7 @@ interface ShippingProvider {
 	code: string;
 	getRates(order: Order): Promise<ShippingRate[]>;
 	createShipment(order: Order): Promise<ShipmentInfo>;
-	trackShipment(trackingNumber: string): Promise<ShipmentStatus>;
+	trackShipment?(trackingNumber: string): Promise<ShipmentStatus>;
 }
 ```
 
@@ -90,14 +106,23 @@ export class DhlProvider implements ShippingProvider {
 }
 ```
 
+Register it:
+
+```typescript filename="src/lib/server/services/shipping/index.ts"
+import { DhlProvider } from "./providers/dhl";
+
+PROVIDERS.set("dhl", new DhlProvider());
+```
+
+Then add a matching row to the `shipping_methods` table (or add it to `initializeDefaultMethods()`).
+
 ## Built-in Providers
 
 ### Payments
 
-- **Stripe** - Full integration with Payment Intents
-- **Mock** - For development/testing
+- **Stripe** - Full integration with Payment Intents and Stripe Elements
+- **Mock** - For development/testing (auto-completes orders immediately)
 
 ### Shipping
 
-- **Posti** - Finnish postal service
-- **Matkahuolto** - Finnish parcel service
+- **Flat Rate** - Simple flat-rate shipping for development and demos

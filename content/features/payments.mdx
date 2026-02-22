@@ -4,14 +4,25 @@ Hoikka uses a provider pattern for payments. Stripe is integrated with real Stri
 
 ## Payment Flow
 
+### Stripe
+
 ```
 1. Customer reaches checkout
-2. Select payment method (Stripe, mock, etc.)
+2. Select Stripe as payment method
 3. Create payment → Stripe PaymentIntent created
 4. Stripe Elements renders card form on frontend
 5. Client-side confirmation via stripe.confirmPayment()
 6. Server confirms payment status
-7. Order is completed
+7. Order is completed → redirect to thank-you
+```
+
+### Mock (development)
+
+```
+1. Customer reaches checkout
+2. Select mock payment method
+3. Click "Place Order" → payment created and order completed in one step
+4. Redirect to thank-you
 ```
 
 ## Stripe Integration

@@ -16,21 +16,15 @@ Hoikka supports multiple shipping providers with a unified interface.
 ## Getting Rates
 
 ```typescript
-const rates = await shippingService.getShippingRates(order);
+const rates = await shippingService.getAvailableRates(order);
 
 // Returns available options
 [
 	{
-		id: "posti_express",
-		name: "Posti Express",
-		price: 1290,
-		estimatedDays: 1
-	},
-	{
-		id: "matkahuolto_pickup",
-		name: "Pickup Point",
+		id: "flat_rate",
+		name: "Standard Shipping",
 		price: 590,
-		estimatedDays: 2
+		estimatedDeliveryDays: 5
 	}
 ];
 ```
@@ -46,8 +40,8 @@ await shippingService.setShippingMethod(orderId, methodId, rateId, price);
 After order is confirmed:
 
 ```typescript
-const shipment = await shippingService.createShipment(orderId);
-// Returns: { trackingNumber: 'JJFI1234567890', labelUrl: '...' }
+const shipment = await shippingService.createShipment(order);
+// Returns: { trackingNumber: 'FLAT_0000000123', metadata: { ... } }
 ```
 
 ## Tracking
@@ -66,25 +60,13 @@ const status = await shippingService.trackShipment(orderId);
 | `in_transit` | Package is being delivered   |
 | `delivered`  | Package delivered            |
 
-## Built-in Providers
+## Built-in Provider
 
-### Posti (Finnish Post)
+### Flat Rate
 
-```typescript
-// Supports:
-// - Home delivery
-// - Parcel lockers (SmartPost)
-// - Pickup points
-```
+A simple flat-rate provider ships with Hoikka for development and demos. It returns a single "Standard Shipping" rate at a fixed price.
 
-### Matkahuolto
-
-```typescript
-// Supports:
-// - Pickup points
-// - Home delivery
-// - Near parcel points
-```
+To swap in a real carrier, implement the `ShippingProvider` interface and register it (see [Providers](/core/providers)).
 
 ## Adding Shipping Methods
 
@@ -93,10 +75,9 @@ Configure in admin or database:
 ```typescript
 // shipping_methods table
 {
-  code: 'posti_express',
-  name: 'Express Delivery',
-  description: 'Next day delivery',
-  price: 1290,
-  enabled: true
+  code: 'flat_rate',
+  name: 'Standard Shipping',
+  description: 'Flat rate standard delivery',
+  active: true
 }
 ```

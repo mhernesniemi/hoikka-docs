@@ -1,0 +1,59 @@
+# Promotions
+
+Hoikka supports coupon codes and automatic discounts with flexible targeting rules.
+
+## Promotion Types
+
+| Type | Description |
+| --- | --- |
+| `order` | Discount on the entire order total |
+| `product` | Discount on specific products |
+| `free_shipping` | Waives shipping cost |
+
+## Methods
+
+- **Code** — customer enters a coupon code at checkout
+- **Automatic** — applied automatically when conditions are met
+
+## Targeting
+
+Promotions can apply to:
+
+- **All products**
+- **Specific products** — linked via `promotion_products`
+- **Specific collections** — linked via `promotion_collections`
+
+## Discount Calculation
+
+Two discount types:
+
+- `percentage` — percentage off (e.g. 20% off)
+- `fixed_amount` — fixed amount in cents (e.g. 500 = 5.00 EUR off)
+
+## Constraints
+
+| Constraint | Description |
+| --- | --- |
+| `minOrderAmount` | Minimum order total required |
+| `usageLimit` | Max total uses across all customers |
+| `usageLimitPerCustomer` | Max uses per individual customer |
+| `customerGroupId` | Restrict to a specific customer group |
+| `startsAt` / `endsAt` | Active time window |
+| `combinesWithOtherPromotions` | Whether it stacks with other promotions |
+
+## Service API
+
+```typescript
+// Validate and apply a coupon code
+const result = await orderService.applyPromotion(orderId, "SUMMER20", customerId);
+
+// List active automatic promotions
+const promos = await promotionService.listActiveAutomatic();
+
+// Get discounted prices for storefront display
+const discounts = await promotionService.getActiveProductDiscounts();
+```
+
+## Schema
+
+Promotions are stored in the `promotions` table with junction tables `promotion_products` and `promotion_collections` for targeting. Applied discounts are tracked in `order_promotions`.

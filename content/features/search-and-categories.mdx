@@ -1,0 +1,72 @@
+# Search & Categories
+
+## Full-Text Search
+
+Product search uses a denormalized `product_search` table that caches product data, facet values, and pricing for fast queries.
+
+### How It Works
+
+1. Products are indexed into `product_search` on create/update
+2. The search table stores a PostgreSQL `tsvector` for full-text matching
+3. Facet values are stored as JSONB arrays for filtering
+4. `minPrice` / `maxPrice` are precomputed from variants
+
+### Search API
+
+```typescript
+// Full-text search with facet filters
+const results = await productSearchService.searchProducts({
+  query: "cotton shirt",
+  facets: { color: ["red", "blue"], size: ["M"] },
+  page: 1,
+  limit: 24
+});
+
+// Get facet counts for current filters
+const counts = await productSearchService.getFilteredFacetCounts(filters);
+
+// Get all product cards (storefront cache)
+const allProducts = await productSearchService.getAllProductCards(customerGroupId);
+```
+
+### Reindexing
+
+```typescript
+// Reindex a single product
+await productSearchService.reindexProduct(productId);
+
+// Reindex everything
+await productSearchService.reindexAll();
+```
+
+## Categories
+
+Categories form a hierarchical tree using a `parentId` self-reference. Each category has a position for ordering and supports multi-language names via translations.
+
+### Tree Structure
+
+```
+Electronics (root)
+├── Phones
+│   ├── Smartphones
+│   └── Accessories
+└── Laptops
+```
+
+### Key Operations
+
+```typescript
+// Get full category tree
+const tree = await categoryService.getTree();
+
+// Get breadcrumbs for navigation
+const breadcrumbs = await categoryService.getBreadcrumbs(categoryId);
+// → [{ id: 1, name: "Electronics" }, { id: 3, name: "Phones" }]
+
+// Get all products in a category (including descendants)
+const productIds = await categoryService.getAllProductIds(categoryId);
+```
+
+### Tax Codes
+
+Categories can carry a `taxCode` field. When calculating tax for a product, the system checks its first category for the applicable tax rate.

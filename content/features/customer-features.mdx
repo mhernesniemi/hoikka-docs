@@ -1,0 +1,71 @@
+# Wishlists, Reviews & Content Pages
+
+## Wishlists
+
+Wishlists work for both logged-in customers and guests.
+
+- **Guests** get a wishlist token stored in a cookie
+- **Logged-in customers** have wishlists linked to their account
+- On sign-in, guest wishlists automatically merge into the customer's wishlist
+
+```typescript
+// Toggle a product in the wishlist
+await wishlistService.toggleItem(wishlistId, productId, variantId);
+
+// Get wishlist items
+const items = await wishlistService.getItems(wishlistId);
+
+// Merge guest wishlist on login
+await wishlistService.transferToCustomer(guestToken, customerId);
+```
+
+## Reviews
+
+Customer reviews with a moderation workflow.
+
+### Flow
+
+1. Customer submits a review (rating 1–5, optional comment)
+2. Review is created with `pending` status
+3. Admin approves or rejects in the admin panel
+4. Only `approved` reviews are shown publicly
+
+### Verified Purchases
+
+Reviews automatically get a "verified purchase" badge if the customer has a completed order containing that product.
+
+### Constraints
+
+- One review per customer per product
+- Nickname is required for display
+
+```typescript
+// Submit a review
+await reviewService.create({
+  productId, customerId, nickname, rating, comment
+});
+
+// Moderate (admin)
+await reviewService.moderate(reviewId, "approved");
+
+// Get product rating summary
+const { average, count } = await reviewService.getProductRating(productId);
+```
+
+## Content Pages
+
+Simple CMS for static pages like About, FAQ, Terms of Service, and similar.
+
+- Each page has a `title`, `slug`, `body` (rich text), and optional `imageUrl`
+- `published` flag controls storefront visibility
+- Multi-language support via `content_page_translations`
+
+```typescript
+// Create a page
+await contentPageService.create({
+  title: "About Us",
+  slug: "about-us",
+  body: "<p>Welcome to our store...</p>",
+  published: true
+});
+```

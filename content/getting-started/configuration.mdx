@@ -40,3 +40,12 @@ PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_test_..."
 ```
 
 Stripe is optional for getting started. A mock payment provider is available for development and testing. When ready for production, get credentials from your [Stripe Dashboard](https://dashboard.stripe.com).
+
+### Email (Resend)
+
+```bash
+RESEND_API_KEY="re_..."
+RESEND_FROM_EMAIL="noreply@yourdomain.com"
+```
+
+Used for digital product delivery emails. Optional — if not set, email delivery is skipped. Get an API key from [Resend](https://resend.com).

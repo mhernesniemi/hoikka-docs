@@ -128,12 +128,9 @@ For entities with inline editing (categories, facet values), translation fields 
 
 ## Storefront Resolution
 
-The storefront resolves translations at the service layer. Services accept an optional `language` parameter. When multi-language storefronts are needed, pass the detected language to service calls:
+Currently, the storefront serves the default language only — fields like `product.name` come directly from the entity tables. Translation tables store non-default language content managed through the admin UI.
 
-```typescript
-// Future: detect language from URL prefix, cookie, or Accept-Language header
-const product = await productService.getById(123, language);
-```
+To add multi-language storefront support, you would detect the language (from URL prefix, cookie, or `Accept-Language` header) and merge the matching translation into the response at the service or route level.
 
 ## Date Formatting
 

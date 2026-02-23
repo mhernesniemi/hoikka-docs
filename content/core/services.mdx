@@ -5,7 +5,7 @@ All business logic lives in `src/lib/server/services/`. Each service is a single
 
 ## Product Service
 
-Manages products and their variants. Returns `ResolvedProduct` with flat translated fields.
+Manages products and their variants.
 
 ```typescript
 import { productService } from "$lib/server/services/products";
@@ -14,7 +14,7 @@ import { productService } from "$lib/server/services/products";
 const product = await productService.getById(123);
 const product = await productService.getBySlug("blue-shirt");
 
-product.name; // "Blue Shirt" (resolved from translations)
+product.name; // "Blue Shirt" (default language, directly from products table)
 
 // List with pagination
 const { items, total } = await productService.list({
@@ -60,7 +60,7 @@ await orderService.setCustomerEmail(orderId, email);
 await orderService.updateTotals(orderId);
 
 // Query
-const order = await orderService.getByCode("ORD-2024-001");
+const order = await orderService.getByCode("ORD-EJXEDYIX");
 ```
 
 ## Customer Service

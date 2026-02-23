@@ -10,7 +10,7 @@ Request → hooks.server.ts (auth, cart, wishlist)
     ↓
 +page.server.ts (thin controller: load + actions)
     ↓
-services/*.ts (business logic + translation resolution)
+services/*.ts (business logic)
     ↓
 db/schema.ts (Drizzle ORM)
     ↓
@@ -47,7 +47,7 @@ export const actions = {
 };
 ```
 
-Services resolve translations internally using `src/lib/server/i18n.ts`, returning `Resolved*` types with flat translated fields (e.g. `product.name` instead of `product.translations[0].name`).
+Default language fields (e.g. `product.name`) are stored directly on entity tables. Non-default language translations are managed separately via `TranslationService`. See [Localization](/core/localization) for details.
 
 ## Provider Pattern
 
@@ -62,7 +62,7 @@ interface PaymentProvider {
 
 const PROVIDERS = new Map<string, PaymentProvider>([
   ["stripe", new StripeProvider()],
-  ["klarna", new KlarnaProvider()]
+  ["mock", new MockProvider()]
 ]);
 ```
 

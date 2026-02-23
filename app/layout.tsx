@@ -32,11 +32,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 									<span className="hoikka-logo">Hoikka</span>
 								</>
 							}
-							projectLink="https://github.com/your-org/hoikka"
+							projectLink="https://github.com/mhernesniemi/hoikka"
 						/>
 					}
 					pageMap={await getPageMap()}
-					docsRepositoryBase="https://github.com/your-org/hoikka/tree/main/docs"
+					docsRepositoryBase="https://github.com/mhernesniemi/hoikka-docs/tree/main"
 					footer={<Footer>Copyright © {new Date().getFullYear()} Hoikka.</Footer>}
 				>
 					{children}

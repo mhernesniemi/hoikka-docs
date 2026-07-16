@@ -1,18 +1,38 @@
+import { Callout } from 'nextra/components'
+
 # Wishlists
 
-Wishlists work for both logged-in customers and guests.
+The wishlist is a **cookie** — a plain list of product ids, following the same pattern as the [cart](/features/cart). There are no wishlist database tables, no guest tokens, and no merge-on-login.
 
-- **Guests** get a wishlist token stored in a cookie
-- **Logged-in customers** have wishlists linked to their account
-- On sign-in, guest wishlists automatically merge into the customer's wishlist
+## Wishlist Cookie
 
-```typescript
-// Toggle a product in the wishlist
-await wishlistService.toggleItem(wishlistId, productId, variantId);
+The codec lives in `src/lib/server/wishlist-cookie.ts`. The cookie is named `wishlist` and holds JSON `[version, productId, ...]`:
 
-// Get wishlist items
-const items = await wishlistService.getItems(wishlistId);
+```typescript filename="src/lib/server/wishlist-cookie.ts"
+export const WISHLIST_COOKIE = "wishlist";
 
-// Merge guest wishlist on login
-await wishlistService.transferToCustomer(guestToken, customerId);
+export function parseWishlistCookie(raw: string | undefined | null): number[];
+export function serializeWishlistCookie(ids: number[]): string;
+export function toggleId(ids: number[], productId: number): { ids: number[]; added: boolean };
 ```
+
+The cookie is `httpOnly`, `sameSite: "lax"`, and lives 1 year. It is capped at 100 products.
+
+<Callout type="info">
+The wishlist works identically for guests and logged-in customers — it is the cookie either way, so nothing merges on sign-in.
+</Callout>
+
+## Remote Functions
+
+`src/lib/remote/wishlist.remote.ts` exposes:
+
+```typescript filename="src/lib/remote/wishlist.remote.ts"
+export const getWishlistCount = query(/* ... */);    // → number (for the header badge)
+export const toggleWishlist = command(schema, /* ... */); // { productId } → { added: boolean }
+```
+
+`toggleWishlist` rewrites the cookie and single-flight refreshes `getWishlistCount` in the same roundtrip.
+
+## Wishlist Page
+
+The `/wishlist` page load reads the cookie and resolves each product id via `productService.getById`, dropping any that were deleted. Its form actions (`remove`, `clear`) rewrite the cookie directly.

@@ -1,56 +1,83 @@
 import { Callout } from 'nextra/components'
 
 # Installation
-## Deploy to Vercel
 
-The fastest way to get started is the one-click deploy button. It clones the repo, provisions a Neon Postgres database and Vercel Blob storage, and deploys everything automatically.
+Hoikka is a SvelteKit store that runs on SQLite and deploys to either a Node.js server or Cloudflare Workers. The same codebase targets both — you pick with a single `HOIKKA_TARGET` env var.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://www.hoikka.dev/deploy)
+## Scaffold a new store
 
-## Local Development
-
-Once your Vercel project is deployed, clone your new repository and set up locally:
+The recommended way to start is the `create-hoikka-app` installer. It clones the template, writes a `.env`, optionally seeds demo data, and — for the Cloudflare target — can provision D1 + R2, apply migrations, set secrets, and deploy.
 
 ```bash
-# Clone your repository
-git clone <your-repo>
-cd <your-repo>
-
-# Install dependencies
-bun install
+pnpx create-hoikka-app my-store
 ```
 
-### Pull Environment Variables
+It prompts for:
 
-Use `vercel link` to connect your local project to the Vercel project, then pull all environment variables (database URL, Blob token, auth credentials, etc.) automatically:
+- **Deploy target** — *Local / Node.js* (SQLite file + local uploads) or *Cloudflare* (Workers + D1 + R2).
+- **Demo content** — seed demo products (local target only).
+
+Flags make it scriptable: `--target=local|cloudflare`, `--seed` / `--no-seed`, `--yes`.
 
 ```bash
-# Link to your Vercel project to pull environment variables
-bunx vercel link
+cd my-store
+pnpm dev
 ```
 
-This creates a `.env.local` file with all the variables configured in your Vercel project.
-
-### Database Setup
-
-```bash
-# Apply migrations
-bun run db:migrate
-
-# (Optional) Open Drizzle Studio
-bun run db:studio
-```
-
-### Start Development
-
-```bash
-bun run dev
-```
-
-Your store is now running at `http://localhost:5173`
+Your store runs at `http://localhost:5173`:
 
 - Storefront: `http://localhost:5173`
 - Admin: `http://localhost:5173/admin`
+
+On first visit to `/admin` you are sent to `/admin/setup` to create the first admin account.
+
+## Manual setup
+
+If you'd rather clone the repo directly:
+
+```bash
+git clone https://github.com/mhernesniemi/hoikka
+cd hoikka
+
+# Install dependencies (Node >= 20)
+pnpm install
+
+# (Optional) seed demo products
+pnpm seed
+
+# Start the dev server
+pnpm dev
+```
+
+`pnpm seed` creates and migrates the SQLite database on first run. Without it, migrations apply automatically the first time the server touches the database. The default database file is `./data/hoikka.db` — override it with `DATABASE_URL`.
+
+<Callout type="info">
+Copy `.env.example` to `.env` and set at least `BETTER_AUTH_SECRET`. See [Configuration](/getting-started/configuration) for the full list.
+</Callout>
+
+## Cloudflare
+
+For the Cloudflare target the app runs on Workers with **D1** (database) and **R2** (asset storage). `create-hoikka-app` can set this up for you; to do it by hand:
+
+```bash
+# Switch the target
+HOIKKA_TARGET=cloudflare
+
+# Create the resources named in wrangler.jsonc
+pnpm exec wrangler d1 create hoikka-db      # copy the id into wrangler.jsonc
+pnpm exec wrangler r2 bucket create hoikka-assets
+
+# Apply migrations to the remote D1 database
+pnpm db:migrate:cf
+
+# Set secrets
+pnpm exec wrangler secret put BETTER_AUTH_SECRET
+
+# Build for Cloudflare and deploy
+pnpm deploy
+```
+
+Run the Cloudflare target locally (bindings via miniflare) with `pnpm dev:cf`.
 
 <Callout type="info">
 **AI-friendly codebase:** Try prompts like *"Add a weight field to products"* and the agent can trace the full path from schema to admin to storefront.

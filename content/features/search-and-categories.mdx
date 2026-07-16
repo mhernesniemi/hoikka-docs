@@ -1,47 +1,57 @@
+import { Callout } from 'nextra/components'
+
 # Search & Categories
 
 ## Full-Text Search
 
-Product search uses a denormalized `product_search` table that caches product data, facet values, and pricing for fast queries.
+Product search runs **server-side** over a SQLite FTS5 index (`product_search_fts`). The catalog never ships to the client.
 
-### How It Works
+<Callout type="info">
+The index is populated by `src/lib/server/services/reindex.ts` and kept stock/price-fresh by SQL triggers (migration `drizzle/0003`).
+</Callout>
 
-1. Products are indexed into `product_search` on create/update
-2. The search table stores a PostgreSQL `tsvector` for full-text matching
-3. Facet values are stored as JSONB arrays for filtering
-4. `minPrice` / `maxPrice` are precomputed from variants
+### Listing Pages
 
-### Search API
+`listProducts(options)` in `src/lib/server/services/product-search.ts` is the single entry point for the storefront listing pages (products, category, collection). It handles free-text FTS search, facet filters with disjunctive counts, price range, sort, and pagination — all server-side.
 
-```typescript
-// Full-text search with facet filters
-const results = await productSearchService.searchProducts({
-  query: "cotton shirt",
-  facets: { color: ["red", "blue"], size: ["M"] },
+```typescript filename="src/lib/server/services/product-search.ts"
+const result = await listProducts({
+  search: "cotton shirt",
+  facets: { color: ["red", "blue"], size: ["m"] },
+  productIds,        // scope to a category's / collection's products
+  priceMin, priceMax, // cents, applied to a product's lowest price
+  sort: "newest",    // newest | price-asc | price-desc | name-asc | name-desc
   page: 1,
-  limit: 24
+  limit: 40,
+  customerId         // applies customer-group pricing to returned prices
 });
+// → { items, pagination, facetCounts, baseFacetCounts, priceRange }
+```
 
-// Get facet counts for current filters
-const counts = await productSearchService.getFilteredFacetCounts(filters);
+`facetCounts` are disjunctive (each active facet group is counted with its own filter removed, so alternatives stay visible); `baseFacetCounts` ignore facet/price filters and decide which values to show at all.
 
-// Get all product cards (storefront cache)
-const allProducts = await productSearchService.getAllProductCards(customerGroupId);
+`parseListingParams(url)` reads `q`, `sort`, `page`, `facet_*`, and `price_min`/`price_max` from the request URL into a `listProducts` options object.
+
+Each listing page (`src/routes/(storefront)/products`, `category/[...path]`, `collections/[id]/[slug]`) calls `listProducts` in its load and passes a `listing` prop to `ProductListing.svelte`.
+
+### Header Search
+
+`quickSearchProducts(term, limit?)` powers the header search-as-you-type — a lightweight top-N ranked name search. It is exposed as the `quickSearch` query in `src/lib/remote/search.remote.ts` and consumed by `SearchBar.svelte` with a debounce.
+
+```typescript filename="src/lib/remote/search.remote.ts"
+export const quickSearch = query(schema, (term) => quickSearchProducts(term));
 ```
 
 ### Reindexing
 
-```typescript
-// Reindex a single product
-await productSearchService.reindexProduct(productId);
-
-// Reindex everything
-await productSearchService.reindexAll();
+```typescript filename="src/lib/server/services/product-search.ts"
+await reindexProduct(productId); // re-index one product (removes it if deleted)
+await reindexAll();              // rebuild the whole index
 ```
 
 ## Categories
 
-Categories form a hierarchical tree using a `parentId` self-reference. Each category has a position for ordering and supports multi-language names via translations.
+Categories form a hierarchical tree using a `parentId` self-reference. Each category has a `position` for ordering and a `taxCode`.
 
 ### Tree Structure
 
@@ -55,18 +65,18 @@ Electronics (root)
 
 ### Key Operations
 
-```typescript
-// Get full category tree
+```typescript filename="src/lib/server/services/categories.ts"
 const tree = await categoryService.getTree();
 
-// Get breadcrumbs for navigation
-const breadcrumbs = await categoryService.getBreadcrumbs(categoryId);
-// → [{ id: 1, name: "Electronics" }, { id: 3, name: "Phones" }]
+const crumbs = await categoryService.getBreadcrumbs(categoryId);
+// → [{ id, slug, name }, ...] from root to the category
 
-// Get all products in a category (including descendants)
+// All product ids in a category, including descendants
 const productIds = await categoryService.getAllProductIds(categoryId);
 ```
 
+Category listing pages feed `getAllProductIds` into `listProducts` as the `productIds` scope.
+
 ### Tax Codes
 
-Categories can carry a `taxCode` field. When calculating tax for a product, the system checks its first category for the applicable tax rate.
+`categoryService.getProductTaxCode(productId)` returns the `taxCode` of the product's first assigned category, or `"standard"` if it has none. `getProductTaxCode` and `getProductCategories` use plain joins over `product_categories`.

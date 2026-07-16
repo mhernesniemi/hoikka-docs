@@ -1,76 +1,90 @@
-# Integrations Overview
+import { Callout } from 'nextra/components'
 
-Hoikka includes lightweight utilities for integrating external systems (ERP, PIM, etc.) alongside Vercel Workflow for durable, scheduled tasks.
+# Integrations
 
-## Available Utilities
+Hoikka ships a small, dependency-free integration layer for the things stores need to talk to the outside world: **outbound webhooks, ERP/PIM sync, background jobs, and inbound webhooks**. It's built on one idea that works identically on Node and Cloudflare Workers — the database is the queue.
 
-### Vercel Workflow
+## The pattern: transactional outbox + a drain tick
 
-Durable workflows with scheduling, retry, and observability:
-
-```typescript filename="workflows/inventory-sync.ts"
-import { sleep } from "workflow";
-
-export async function inventorySync() {
-	"use workflow";
-	while (true) {
-		await syncInventory();
-		await sleep("1h");
-	}
-}
-
-async function syncInventory() {
-	"use step";
-	const { runSync } = await import("$lib/server/integrations");
-	await runSync(inventoryJob);
-}
+```
+emitEvent(type, payload)   →   outbox table   →   drainOutbox()   →   handler
+   (in a service)              (durable log)       (scheduled tick)   (your code)
 ```
 
-### Sync Runner
+1. **Emit** — `emitEvent("order.paid", payload)` is a plain `INSERT` into the `outbox` table. Because it's a normal DB write alongside your business data, events can't get lost (the "transactional outbox" guarantee).
+2. **Drain** — `drainOutbox()` is the "tick": it picks up due events, runs a registered handler per event type, and retries failures with exponential backoff.
+3. **Trigger** — the tick runs on a schedule; the only thing that differs per target is what pulls the trigger (below).
 
-Reusable pattern for syncing external data:
+No queue infrastructure, no external dependencies — the outbox table is the one primitive both targets share.
 
-```typescript
-import { runSync, type SyncJob } from "$lib/server/integrations";
+<Callout type="info">
+	Prefer *lazy* over *scheduled* where you can. Many "jobs" (like expiring stock reservations) are really "reconcile on next read" and need no scheduler at all. Reach for the outbox only for work that must happen out-of-band — calling an ERP, sending a webhook.
+</Callout>
 
-const inventorySync: SyncJob<ErpItem, LocalVariant> = {
-	name: "erp-inventory",
-	fetchExternal: () => erpClient.getInventory()
-	// ...
-};
+## Emitting events
 
-const results = await runSync(inventorySync);
+Call `emitEvent` from a service or route, in the same flow as your writes:
+
+```typescript filename="src/lib/remote/checkout.remote.ts"
+import { emitEvent } from "$lib/server/integrations/events";
+
+await emitEvent("order.paid", { code, total, customerEmail });
+// options: emitEvent(type, payload, { delayMs, maxAttempts })
 ```
 
-### Webhooks
+## Handling events
 
-Verify incoming webhook signatures:
+Register a handler per type in `src/lib/server/integrations/handlers.ts` — plain functions in a map, like the payment/shipping provider registries. A handler that throws is retried with backoff (up to `maxAttempts`, default 5):
 
-```typescript filename="src/routes/api/webhooks/erp/+server.ts"
-import { json } from "@sveltejs/kit";
-import { verifyHmacSha256 } from "$lib/server/integrations";
-import { env } from "$env/dynamic/private";
+```typescript filename="src/lib/server/integrations/handlers.ts"
+import { registerHandler } from "./handlers";
 
-export async function POST({ request }) {
-	const body = await request.text();
-	const signature = request.headers.get("x-signature")!;
-
-	if (!verifyHmacSha256(body, signature, env.ERP_WEBHOOK_SECRET!)) {
-		return json({ error: "Invalid signature" }, { status: 401 });
-	}
-
-	const payload = JSON.parse(body);
-	// handle webhook...
-	return json({ received: true });
-}
+registerHandler("order.paid", async (payload) => {
+	// sync to an ERP, push to a PIM, notify Slack, send an outbound webhook...
+	const res = await fetch(process.env.ERP_URL, { method: "POST", body: JSON.stringify(payload) });
+	if (!res.ok) throw new Error(`ERP sync failed: ${res.status}`); // → retried
+});
 ```
 
-### Retry
+The built-in example forwards `order.paid` to `ORDER_WEBHOOK_URL` (HMAC-signed with `ORDER_WEBHOOK_SECRET` if set), and is a no-op when the URL isn't configured.
 
-Retry failed operations with exponential backoff:
+## Triggering the drain
 
-```typescript
-import { withRetry } from "$lib/server/integrations";
+The drain function is identical on both targets; the trigger is one line each.
 
-await withRetry(() => externalApi.call(), { maxAttempts: 3 });
+**Node** — a background interval starts once per server process (`ensureNodeScheduler`, wired from `hooks.server.ts`). Nothing to configure.
+
+**Cloudflare** — the SvelteKit worker only handles `fetch`, so a companion cron worker drives the drain. Deploy it once:
+
+```bash
+wrangler deploy --config wrangler.cron.jsonc
 ```
+
+It fires on a Cron Trigger and POSTs `/api/tasks/run` on your store. Set `STORE_URL` and `TASKS_SECRET` on it (the latter matching the store's).
+
+**Anywhere** — you can also drain manually or from any external scheduler:
+
+```bash
+curl -X POST https://your-store/api/tasks/run -H "authorization: Bearer $TASKS_SECRET"
+```
+
+<Callout type="warning">
+	Set `TASKS_SECRET` in production — `/api/tasks/run` is open only when it's unset (dev convenience).
+</Callout>
+
+## Inbound webhooks
+
+`POST /api/webhooks/[provider]` verifies an HMAC-SHA256 signature (Web Crypto, works on both targets) and records the payload to the outbox as `webhook.<provider>`. Add a handler for that type to process it.
+
+- Secret per provider: env `WEBHOOK_SECRET_<PROVIDER>` (uppercased), e.g. `WEBHOOK_SECRET_ERP`.
+- Signature header: `x-hoikka-signature` (hex, optional `sha256=` prefix).
+
+```typescript filename="src/lib/server/integrations/handlers.ts"
+registerHandler("webhook.erp", async (payload) => {
+	// react to an inbound ERP webhook
+});
+```
+
+## Graduating
+
+If you outgrow the outbox table, Cloudflare Queues / Workflows / Durable Object alarms are more powerful — but they're Workers-only and heavier. The outbox+tick gets you most of the way at a fraction of the complexity and stays portable across both targets, so it's the right starting point.

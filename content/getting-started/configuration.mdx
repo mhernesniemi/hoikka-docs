@@ -1,51 +1,91 @@
+import { Callout } from 'nextra/components'
 
 # Configuration
 
-Hoikka uses environment variables for configuration. No XML, YAML, or admin panels needed.
+Hoikka is configured entirely through environment variables, read via `$env/dynamic/*`. Copy `.env.example` to `.env` to get started.
 
-When using the Vercel deploy button, `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are provisioned automatically. Use `bunx vercel env pull .env.local` to sync them locally.
+## Deployment target
 
-## Required Variables
+A single variable decides how the app is built and where the database and storage come from. It is read in both `svelte.config.js` (adapter) and `vite.config.ts` (module aliases).
 
-### Database
-
-```bash
-DATABASE_URL="postgresql://user:password@localhost:5432/hoikka"
+```bash filename=".env"
+# "node" (default) or "cloudflare"
+HOIKKA_TARGET=node
 ```
 
-### Authentication (Neon Auth)
+| Target | Adapter | Database | Storage |
+| --- | --- | --- | --- |
+| `node` | `@sveltejs/adapter-node` | `better-sqlite3` file | local filesystem |
+| `cloudflare` | `@sveltejs/adapter-cloudflare` | D1 binding | R2 binding |
 
-```bash
-NEON_AUTH_BASE_URL=
-NEON_AUTH_COOKIE_SECRET=
+Switching targets is just flipping this value (and rebuilding). Run the Cloudflare target locally with `pnpm dev:cf`.
+
+## Required variables
+
+### Better Auth
+
+```bash filename=".env"
+BETTER_AUTH_SECRET=
 ```
 
-Enable Auth in your [Neon Console](https://console.neon.tech) to get these credentials.
+`BETTER_AUTH_SECRET` signs sessions and is required. See [Authentication](/core/authentication).
 
-### Images (Vercel Blob)
+## Optional variables
 
-```bash
-BLOB_READ_WRITE_TOKEN=
+### Auth base URL
+
+```bash filename=".env"
+BETTER_AUTH_URL="https://your-store.example"
 ```
 
-Auto-provisioned when connecting a Blob store in your [Vercel Dashboard](https://vercel.com/dashboard).
+Not needed normally — auth derives the base URL from the incoming request. Set it only to override, e.g. behind a reverse proxy that doesn't forward the public origin.
 
-## Optional Variables
+### Database location (node target)
 
-### Payments (Stripe)
-
-```bash
-STRIPE_SECRET_KEY="sk_test_..."
-PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_test_..."
+```bash filename=".env"
+# Defaults to ./data/hoikka.db — set only to override.
+DATABASE_URL="./data/hoikka.db"
 ```
 
-Stripe is optional for getting started. A mock payment provider is available for development and testing. When ready for production, get credentials from your [Stripe Dashboard](https://dashboard.stripe.com).
+Only used on the node target. The Cloudflare target ignores it and uses the D1 binding (`platform.env.DB`).
+
+### OAuth (Google)
+
+```bash filename=".env"
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+```
+
+Google sign-in is enabled only when both are set.
 
 ### Email (Resend)
 
-```bash
-RESEND_API_KEY="re_..."
+```bash filename=".env"
+RESEND_API_KEY=
 RESEND_FROM_EMAIL="noreply@yourdomain.com"
 ```
 
-Used for digital product delivery emails. Optional — if not set, email delivery is skipped. Get an API key from [Resend](https://resend.com).
+Used for digital product delivery emails. Optional — if not set, email delivery is skipped.
+
+### Payments (Stripe)
+
+```bash filename=".env"
+STRIPE_SECRET_KEY="sk_..."
+PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_..."
+```
+
+Optional for getting started — a mock payment provider is used for development and testing. Get credentials from your [Stripe Dashboard](https://dashboard.stripe.com).
+
+### Other
+
+```bash filename=".env"
+# Read-only guard: blocks admin POST/mutations for public demos.
+DEMO_MODE=
+
+# Absolute site URL for the sitemap (falls back to the request origin).
+PUBLIC_SITE_URL=
+```
+
+<Callout type="info">
+On Cloudflare, secrets are set with `wrangler secret put <NAME>` rather than an `.env` file.
+</Callout>

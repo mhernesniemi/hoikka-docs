@@ -59,11 +59,13 @@ Products and variants can have facet values assigned for:
 
 ## Search
 
-Full-text search using PostgreSQL:
+Admin product lists use a simple `LIKE` match over name and description:
 
 ```typescript
 const results = await productService.list({ search: "shirt" });
 ```
+
+The storefront uses a SQLite FTS5 index instead — see [Search & Categories](/features/search-and-categories).
 
 ## Admin Operations
 

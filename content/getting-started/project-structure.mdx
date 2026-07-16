@@ -5,18 +5,35 @@
 src/
 ├── lib/
 │   ├── config/            # App configuration
+│   ├── remote/            # SvelteKit remote functions (cart, wishlist, search, checkout)
 │   ├── server/
-│   │   ├── db/            # Drizzle schema & client
-│   │   ├── services/      # Business logic
-│   │   └── integrations/  # Sync runner, webhooks, retry
+│   │   ├── db/            # Drizzle schema + client seam (node.ts, config.ts, stubs)
+│   │   ├── services/      # Business logic (products, orders, cart, payments, shipping, …)
+│   │   ├── storage/       # Asset storage seam (fs / r2 + stubs)
+│   │   ├── images/        # Image processing (sharp on node)
+│   │   ├── auth.ts        # Better Auth setup
+│   │   ├── cart-cookie.ts # Cookie-backed cart
+│   │   └── wishlist-cookie.ts
 │   ├── components/
-│   │   ├── admin/         # Admin UI components
-│   │   └── storefront/    # Storefront UI components
-│   ├── stores/            # Client-side stores
+│   │   ├── admin/         # Admin UI components (+ ui/)
+│   │   └── storefront/    # Storefront UI components (+ ui/, Img.svelte)
+│   ├── stores/            # Client-side Svelte 5 stores (cart, admin theme)
 │   └── types.ts           # TypeScript types
 ├── routes/
 │   ├── (storefront)/      # Customer-facing store
-│   ├── admin/             # Admin dashboard
-│   └── api/               # API endpoints
-└── drizzle/               # Database migrations
+│   ├── admin/             # Admin dashboard (incl. /admin/setup)
+│   ├── api/               # API endpoints (auth, assets)
+│   └── uploads/[...path]/ # Local/R2 image-serving route
+├── hooks.server.ts        # Auth, customer sync, demo guard
+scripts/                   # seed.ts, mcp.ts, tooling
+drizzle/                   # SQLite migrations (incl. raw-SQL FTS5)
+packages/
+└── create-hoikka-app/     # npm installer / scaffolder
+wrangler.jsonc             # Cloudflare Workers config (D1, R2, images)
 ```
+
+## Notes
+
+- **`src/lib/remote/*.remote.ts`** — SvelteKit experimental [remote functions](/core/architecture#remote-functions). Enabled via `kit.experimental.remoteFunctions` and `compilerOptions.experimental.async`.
+- **`src/lib/server/db/`** — the database seam. `index.ts` exposes a lazy `db` Proxy backed by `better-sqlite3` on node (`node.ts`) or D1 on Cloudflare. `node-stub.ts` keeps `better-sqlite3` out of the Workers bundle.
+- **`src/lib/server/storage/`** — the asset seam mirrors the db seam: local filesystem (`fs.ts`) on node, R2 (`r2.ts`) on Cloudflare, served through `routes/uploads/[...path]/`.

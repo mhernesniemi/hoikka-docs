@@ -1,67 +1,55 @@
+import { Callout } from 'nextra/components'
 
 # Cart
 
-Hoikka uses cookie-based cart tokens for guest-friendly shopping. Carts are orders in `"created"` state, managed through `orderService`.
+The cart lives entirely in a **cookie** while the customer shops — no database rows are written until checkout starts. Prices, tax, stock, and automatic promotions are always resolved server-side when the cart is read.
 
-## Cart Tokens
+## Cart Cookie
 
-```typescript filename="+page.server.ts"
-export const load = async ({ cookies }) => {
-	const token = cookies.get("cart_token") ?? crypto.randomUUID();
+The codec lives in `src/lib/server/cart-cookie.ts`. The cookie is named `cart` and holds a compact JSON array of `[version, [variantId, qty], ...]`:
 
-	cookies.set("cart_token", token, {
-		path: "/",
-		maxAge: 60 * 60 * 24 * 30 // 30 days
-	});
+```typescript filename="src/lib/server/cart-cookie.ts"
+export const CART_COOKIE = "cart";
 
-	const cart = await orderService.getOrCreateActiveCart({ cartToken: token });
-	return { cart };
-};
+// e.g. [1, [12, 2], [34, 1]] — version 1, variant 12 ×2, variant 34 ×1
+export function parseCartCookie(raw: string | undefined | null): CartLine[];
+export function serializeCartCookie(lines: CartLine[]): string;
 ```
 
-## Cart Operations
+The cookie is `httpOnly`, `sameSite: "lax"`, and lives 30 days. It is intentionally **unsigned** — it only holds variant ids and quantities, both of which the customer controls through the UI anyway. Carts are capped at 50 different items and quantity 999 per line.
 
-### Add Item
+<Callout type="info">
+There is no cart merge on login. The cookie **is** the cart regardless of auth state — signing in just changes how prices (group pricing) and tax exemption are resolved when the cart is read.
+</Callout>
 
-```typescript
-await orderService.addLine(cartId, { variantId, quantity });
+## Read Model
 
-// If item exists, quantity is increased
+`getCartView` turns cookie lines into a priced view in a handful of batched queries. It never writes to the database.
+
+```typescript filename="src/lib/server/services/cart.ts"
+const view = await getCartView(cartLines, customerId, { skipPromotions });
+// view: { lines, itemCount, subtotal, discount, taxTotal, total, isTaxExempt, promotions }
 ```
 
-### Update Quantity
+It resolves, per line: the featured image (variant image → product asset → featured/first variant image), group pricing for logged-in customers, available stock (variant stock minus active reservations), tax, and any qualifying automatic promotions.
 
-```typescript
-await orderService.updateLineQuantity(cartId, lineId, newQuantity);
+## Remote Functions
+
+The UI talks to the cart through remote functions in `src/lib/remote/cart.remote.ts`. `getCart` is a `query()`; each mutating `command()` is valibot-validated, keyed by `variantId`, rewrites the cookie, then single-flight refreshes `getCart`:
+
+```typescript filename="src/lib/remote/cart.remote.ts"
+export const getCart = query(/* ... */);            // → CartView
+export const addToCart = command(schema, /* ... */);       // { variantId, quantity }
+export const setCartQuantity = command(schema, /* ... */); // quantity 0 removes the line
+export const removeCartLine = command(schema, /* ... */);  // { variantId }
 ```
 
-### Remove Item
+`addToCart` and `setCartQuantity` check available stock against reservations; `addToCart` errors when it would exceed stock, while `setCartQuantity` silently clamps to what is purchasable.
 
-```typescript
-await orderService.removeLine(cartId, lineId);
-```
+## UI
 
-## Cart Structure
+`src/lib/components/storefront/CartSheet.svelte` renders `getCart().current`. The `cartStore` in `src/lib/stores/cart.svelte.ts` is now only sheet open/close state — the cart data itself comes from the remote query.
 
-```typescript
-interface Cart {
-	id: number;
-	token: string;
-	lines: CartLine[];
-	subtotal: number;
-	createdAt: Date;
-}
+## Checkout
 
-interface CartLine {
-	id: number;
-	variantId: number;
-	variant: ProductVariant;
-	quantity: number;
-	unitPrice: number;
-	total: number;
-}
-```
-
-## Stock Validation
-
-Stock is validated when adding items. Stock reservations are created with a 15-minute expiry. See `ARCHITECTURE.md` for the full reservation lifecycle.
+The first database write happens when checkout starts, in `orderService.startCheckout` (`src/lib/server/services/orders.ts`). It snapshots the cookie lines into an order (`active=true, state=created`) with prices/names from `getCartView` and creates 15-minute stock reservations. The draft is identified by the `checkout_token` cookie. See [Orders](/features/orders) for the full lifecycle.

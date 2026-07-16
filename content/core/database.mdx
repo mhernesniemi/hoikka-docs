@@ -1,34 +1,39 @@
+import { Callout } from 'nextra/components'
 
 # Database
 
-Hoikka uses PostgreSQL with Drizzle ORM. Schema is defined in TypeScript.
+Hoikka uses **SQLite** with Drizzle ORM. The schema is defined in TypeScript (dialect `sqlite`) and runs on `better-sqlite3` on the node target and on **Cloudflare D1** on the cloudflare target.
 
-## Schema Location
+## The db seam
 
 ```
 src/lib/server/db/
-├── index.ts      # Database client
-└── schema.ts     # Table definitions
+├── index.ts       # `db` — lazy Proxy resolving to the right backend
+├── node.ts        # better-sqlite3 singleton (node); migrates on first use
+├── node-stub.ts   # aliased in on the cloudflare build
+├── config.ts      # DATABASE_URL resolution (default ./data/hoikka.db)
+└── schema.ts      # table definitions (sqliteTable)
 ```
 
-## Core Tables
+`index.ts` exports a `db` Proxy. On node it's a `better-sqlite3` singleton created by `node.ts` — WAL mode, foreign keys on — which applies migrations from `drizzle/` on first use. On Cloudflare it's a Drizzle client over the D1 binding (`platform.env.DB`), cached per request. The default node database file is `./data/hoikka.db`, overridable with `DATABASE_URL`.
+
+## Core tables
 
 ### Products
 
 ```typescript
 products
-├── id: serial primary key
-├── name, slug, description       // Default language (English) fields
-├── type, visibility, taxCode
-├── featuredAssetId: integer
-├── createdAt, updatedAt: timestamp
+├── id, name, slug, description       // Default language fields
+├── type (physical | digital)
+├── visibility (public | private | draft)
+├── taxCode, featuredAssetId
+├── deletedAt, createdAt, updatedAt
 
-product_translations              // Non-default language translations
-├── id, productId, languageCode
-├── name, slug, description
+product_translations                  // Non-default language translations
+├── id, productId, languageCode, name, slug, description
 
 product_variants
-├── id, productId, name, sku, price, stock
+├── id, productId, name, sku, price, stock, ...
 
 product_variant_translations
 ├── id, variantId, languageCode, name
@@ -39,59 +44,68 @@ product_variant_translations
 ```typescript
 orders
 ├── id, code (unique order number)
-├── customerId (nullable for guests)
+├── customerId (nullable), checkoutToken, active
 ├── state: created | payment_pending | paid | shipped | delivered | cancelled
-├── subtotal, taxTotal, shipping, discount, total
+├── subtotal, shipping, discount, total
+├── taxTotal, totalNet, isTaxExempt
 ├── currencyCode, exchangeRate
-├── shippingFullName, shippingStreetLine1, shippingCity, etc.
+├── shippingFullName, shippingStreetLine1, shippingCity, ...
+├── customerEmail, orderPlacedAt
 
 order_lines
-├── id, orderId, variantId
-├── quantity, unitPrice, total
+├── id, orderId, variantId, quantity
+├── unitPrice, lineTotal, taxCode, taxRate, taxAmount
+├── productName, variantName, sku
 
 payments
-├── id, orderId, paymentMethodId
-├── amount, state, transactionId
+├── id, orderId, paymentMethodId, method
+├── amount, state (pending | authorized | settled | declined | refunded), transactionId
 
 order_shipping
 ├── id, orderId, shippingMethodId
 ├── price, status, trackingNumber
 ```
 
+<Callout type="info">
+An order row is created only at checkout. Before that the cart lives in a cookie — see [Architecture](/core/architecture#cookie-cart).
+</Callout>
+
 ### Facets
 
 ```typescript
 facets
-├── id, code (e.g., "color", "size")
+├── id, name, code (e.g., "color", "size")
 ├── isHidden (hidden from storefront filters)
 
 facet_values
-├── id, facetId, code (e.g., "red", "xl")
+├── id, facetId, name, code (e.g., "red", "xl")
 
 product_facet_values (productId, facetValueId)
-product_variant_facet_values (variantId, facetValueId)
+variant_facet_values (variantId, facetValueId)
 ```
 
-### Jobs (Queue)
+## Full-text search
 
-```typescript
-jobs
-├── id, queue, type
-├── payload (jsonb)
-├── status: pending | processing | completed | failed
-├── attempts, maxAttempts
-├── runAt, completedAt, lastError
-```
+Product search uses SQLite **FTS5**. The virtual table `product_search_fts` is created by a raw-SQL migration (`drizzle/0001_product_search_fts.sql`) with `unicode61` tokenization and diacritic removal (so Finnish "äöå" matches their ASCII forms). SQL triggers (`drizzle/0003_fts_stock_price_triggers.sql`) keep the index's stock and price columns in sync as variants change.
 
 ## Migrations
 
+Migrations live in `drizzle/` and are generated from the schema. On the node target they apply automatically at server start; on Cloudflare apply them explicitly with Wrangler.
+
 ```bash
 # Generate from schema changes
-bun run db:generate
+pnpm db:generate
 
-# Apply migrations
-bun run db:migrate
+# Apply to remote D1 (cloudflare target)
+pnpm db:migrate:cf
+
+# Open Drizzle Studio
+pnpm db:studio
 ```
+
+<Callout type="warning">
+Never use `drizzle-kit push`. Always generate a migration file.
+</Callout>
 
 ## Querying
 

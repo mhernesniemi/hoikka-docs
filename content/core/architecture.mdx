@@ -1,23 +1,33 @@
 
 # Architecture
 
-Hoikka follows a service-oriented architecture adapted for SvelteKit's patterns.
+Hoikka follows a service-oriented architecture adapted for SvelteKit's patterns. One codebase targets two runtimes — a Node.js server or Cloudflare Workers — selected with `HOIKKA_TARGET`.
 
-## Request Flow
+## Dual-target design
+
+The platform-specific pieces are hidden behind two "seams" so the rest of the app never branches on the target:
+
+- **Database** (`src/lib/server/db/index.ts`) — `db` is a lazy `Proxy`. On node it resolves to a `better-sqlite3` singleton (`node.ts`, migrates on first use). On Cloudflare it resolves to a Drizzle client over the D1 binding (`platform.env.DB`), cached per request on `event.locals`.
+- **Storage** (`src/lib/server/storage/index.ts`) — mirrors the db seam. When the R2 binding is present the request uses R2; otherwise files go to the local filesystem. Public URLs are `/uploads/...` on both.
+
+`svelte.config.js` picks the adapter (`adapter-node` vs `adapter-cloudflare`) and `vite.config.ts` aliases node-only modules (`better-sqlite3`, `node:fs` storage, `sharp` images) to stubs on the Cloudflare build so they never enter the Workers bundle.
+
+## Request flow
 
 ```
-Request → hooks.server.ts (auth, cart, wishlist)
+Request → hooks.server.ts (session, customer sync, demo guard)
     ↓
 +page.server.ts (thin controller: load + actions)
+  or  *.remote.ts (query / command)
     ↓
 services/*.ts (business logic)
     ↓
-db/schema.ts (Drizzle ORM)
+db/schema.ts (Drizzle ORM over SQLite / D1)
     ↓
 +page.svelte (view)
 ```
 
-## Service Pattern
+## Service pattern
 
 Business logic lives in singleton services under `src/lib/server/services/`:
 
@@ -49,7 +59,15 @@ export const actions = {
 
 Default language fields (e.g. `product.name`) are stored directly on entity tables. Non-default language translations are managed separately via `TranslationService`. See [Localization](/core/localization) for details.
 
-## Provider Pattern
+## Remote functions
+
+Cart, wishlist, search, and checkout use SvelteKit [remote functions](https://svelte.dev/docs/kit/remote-functions) in `src/lib/remote/*.remote.ts` (enabled via `kit.experimental.remoteFunctions` + `compilerOptions.experimental.async`). A `query()` reads data; a `command()` mutates and refreshes the query in the same roundtrip (single-flight mutation), so the client updates without extra requests.
+
+## Cookie cart
+
+Shopping never writes to the database. The cart lives in a cookie (`src/lib/server/cart-cookie.ts`); the wishlist likewise (`wishlist-cookie.ts`). An order row is created only at checkout: the checkout page load reconciles the cart cookie into a **draft order** (`orderService.startCheckout`) tracked by a `checkout_token` cookie, and checkout `command()`s update that draft. Completion clears the cart cookies and returns the order code for navigation to the thank-you page.
+
+## Provider pattern
 
 Payments and shipping use a provider pattern for easy swapping:
 
@@ -66,9 +84,10 @@ const PROVIDERS = new Map<string, PaymentProvider>([
 ]);
 ```
 
-## Design Principles
+## Design principles
 
-1. **Services are singletons** - One instance shared across requests
-2. **Route handlers are thin** - Validate input and call services
-3. **Views receive typed data** - Via `PageData` from load functions
-4. **Forms use progressive enhancement** - Work without JS via `use:enhance`
+1. **Services are singletons** — one instance shared across requests
+2. **Route handlers are thin** — validate input and call services
+3. **Platform lives behind seams** — the app never branches on `HOIKKA_TARGET`
+4. **Views receive typed data** — via `PageData` from load functions
+5. **Forms use progressive enhancement** — work without JS via `use:enhance`

@@ -1,165 +1,130 @@
 
 # Authentication
 
-Hoikka uses [Neon Auth](https://neon.tech/docs/guides/neon-auth) for authentication. Neon Auth runs alongside your Neon Postgres database and provides email/password login, OAuth (Google), email verification, and password reset out of the box.
+Hoikka uses [Better Auth](https://better-auth.com) for authentication — email/password, optional Google OAuth, and email OTP. Sessions are stored in the database (the same SQLite/D1 backend as the rest of the app), so auth works identically on both deploy targets.
 
 ## Setup
 
-### Environment Variables
+### Environment variables
 
 ```bash
-NEON_AUTH_BASE_URL=    # Neon Auth service URL
-NEON_AUTH_COOKIE_SECRET=  # Secret for secure session cookies
+BETTER_AUTH_SECRET=              # signs sessions (required)
+BETTER_AUTH_URL=                 # optional — derived from the request if unset
+
+GOOGLE_CLIENT_ID=                # optional — enables Google sign-in
+GOOGLE_CLIENT_SECRET=            # (both must be set)
 ```
 
-Enable Auth in your [Neon Console](https://console.neon.tech) to get these credentials. When using the Vercel deploy button, connect Neon as an integration and enable Auth from the Neon dashboard.
+The Better Auth instance is built in `src/lib/server/auth.ts`. It's constructed lazily behind a `Proxy` so build-time route analysis (where env vars are empty) doesn't need a secret — construction is deferred to the first real request.
 
-### First-Time Admin Setup
+Configuration highlights:
 
-On first visit to `/admin`, you are redirected to `/admin/setup` where you create the initial admin account. This:
+- **Email + password**, minimum 8 characters. Email verification is not required to sign in.
+- **Google OAuth** is enabled only when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set.
+- **Email OTP** plugin for verification / password reset. In dev the OTP is logged to the console (`[auth] OTP for ...`) — wire Resend/SMTP for production.
+- A `role` field on the user (`customer` default, or `staff` / `admin`).
+- The `sveltekitCookies` plugin forwards session cookies from server-side `auth.api` calls into the SvelteKit response.
 
-1. Creates a user via Neon Auth
-2. Sets the `role` to `admin` and marks email as verified
-3. Redirects to the admin login page
+### First-time admin setup
 
-Once an admin exists, the setup page is disabled.
+On first visit to `/admin`, if no admin user exists you are sent to `/admin/setup` to create the initial account. It:
 
-## How It Works
+1. Creates a user via `auth.api.signUpEmail`
+2. Sets the `role` to `admin` and marks the email verified
+3. Signs the new admin in and redirects to `/admin`
 
-### Auth Proxy
+Once an admin exists, the setup page redirects to `/admin/login`.
 
-All auth requests go through a proxy route at `/api/auth/[...path]` that forwards to the Neon Auth service. This ensures session cookies are set on the application's domain.
+## How it works
 
-```
-Client → /api/auth/* → Neon Auth service
-                     ← session cookies
-```
+### Auth handler
 
-### Session Validation
+All Better Auth requests are handled by a catch-all route at `/api/auth/[...all]` that delegates to `auth.handler`.
 
-On every request, `hooks.server.ts` validates the session:
+### Session validation
+
+`src/hooks.server.ts` validates the session on each request. Anonymous traffic short-circuits: if no `better-auth.session_token` cookie is present, the DB lookup is skipped entirely.
 
 ```typescript
 // hooks.server.ts — sessionHandler
-const response = await event.fetch(`${NEON_AUTH_BASE_URL}/get-session`);
-const data = await response.json();
-
-event.locals.user = {
-	id: data.user.id,
-	name: data.user.name,
-	email: data.user.email,
-	role: data.user.role, // "admin", "staff", or undefined
-	emailVerified: data.user.emailVerified
-};
+const result = await auth.api.getSession({ headers: event.request.headers });
+if (result?.user) {
+	event.locals.user = {
+		id: result.user.id,
+		name: result.user.name,
+		email: result.user.email,
+		role: result.user.role,        // "customer", "staff", or "admin"
+		emailVerified: result.user.emailVerified
+	};
+}
 ```
 
-### Customer Sync
+### Customer sync
 
-When a non-admin user logs in, a `customers` record is automatically created (or found) and set on `locals.customer`:
-
-```typescript
-// First login creates the customer record
-// authUserId links to neon_auth."user".id
-// Name is split into firstName / lastName
-event.locals.customer = await customerService.getOrCreateFromAuth(event.locals.user);
-```
-
-Admin and staff users do not get a customer record.
+When a non-admin user is present, a `customers` record is created (or found) and set on `locals.customer`. The `authUserId` column links it to the Better Auth `user.id`; the name is split into `firstName` / `lastName`. Admin and staff users do not get a customer record.
 
 ### Locals
 
-After hooks run, every request has access to:
+After hooks run, every request has:
 
 ```typescript
 locals.user       // { id, name, email, role?, emailVerified? } | null
-locals.customer   // Customer record | null (null for admins)
-locals.cartToken  // Guest cart cookie | null
+locals.customer   // Customer record | null (null for admin/staff)
+locals.adminDark  // admin dark-theme cookie flag
 ```
 
-## Storefront Auth
+## Storefront auth
 
-### Sign Up
+The client uses `src/lib/auth-client.ts` (`createAuthClient` with the email-OTP plugin).
+
+### Sign up
 
 `/sign-up` — email/password or Google OAuth.
 
 ```typescript
 import { authClient } from "$lib/auth-client";
 
-// Email sign-up
 await authClient.signUp.email({ name, email, password });
-// → redirects to /verify-email
 
 // Google OAuth
 authClient.signIn.social({ provider: "google", callbackURL: "/" });
 ```
 
-After email sign-up, the user must verify their email before accessing protected routes.
-
-### Sign In
+### Sign in
 
 `/sign-in` — email/password or Google OAuth.
 
 ```typescript
 const result = await authClient.signIn.email({ email, password });
-
-if (result.error) {
-	// show error
-} else if (!result.data.user.emailVerified) {
-	// redirect to /verify-email
-} else {
-	// redirect to original page
-}
 ```
 
-### Email Verification
+### Email verification
 
-`/verify-email` — 6-digit OTP sent to email.
+`/verify-email` — 6-digit OTP.
 
 ```typescript
-// Send code
-await authClient.emailOtp.sendVerificationOtp({
-	email,
-	type: "email-verification"
-});
-
-// Verify code
+await authClient.emailOtp.sendVerificationOtp({ email, type: "email-verification" });
 await authClient.emailOtp.verifyEmail({ email, otp });
 ```
 
-### Password Reset
+### Password reset
 
-`/forgot-password` — two-step flow:
+`/forgot-password` — two-step OTP flow.
 
 ```typescript
-// Step 1: request code
-await authClient.emailOtp.sendVerificationOtp({
-	email,
-	type: "forget-password"
-});
-
-// Step 2: reset with code
+await authClient.emailOtp.sendVerificationOtp({ email, type: "forget-password" });
 await authClient.emailOtp.resetPassword({ email, otp, password });
 ```
 
-## Route Protection
+## Route protection
 
-### Storefront Account Routes
+### Storefront account routes
 
-`/account/*` is protected by a layout guard:
+`/account/*` is protected by a layout guard (`src/routes/(storefront)/account/+layout.server.ts`) — requires a logged-in user with a verified email and a customer record, otherwise redirects to `/sign-in`.
 
-```typescript
-// src/routes/(storefront)/account/+layout.server.ts
-if (!locals.user) {
-	throw redirect(303, "/sign-in?redirect=/account");
-}
-if (locals.user.emailVerified === false) {
-	throw redirect(303, `/verify-email?email=${encodeURIComponent(locals.user.email)}`);
-}
-```
+### Admin routes
 
-### Admin Routes
-
-`/admin/*` requires `role` of `admin` or `staff`:
+`/admin/*` requires a `role` of `admin` or `staff` (login and setup pages excepted):
 
 ```typescript
 // src/routes/admin/+layout.server.ts
@@ -174,25 +139,14 @@ if (!locals.user || !["admin", "staff"].includes(locals.user.role ?? "")) {
 | --- | --- | --- |
 | `admin` | Full admin panel | No |
 | `staff` | Full admin panel | No |
-| _(none)_ | Storefront + account | Yes (auto-created) |
+| `customer` | Storefront + account | Yes (auto-created) |
 
-Roles are stored on `neon_auth."user".role`. The initial admin is created via `/admin/setup`. Additional admins or staff must be assigned via the database:
+The initial admin is created via `/admin/setup`. Additional admins or staff are promoted in the database:
 
 ```sql
-UPDATE neon_auth."user" SET role = 'staff' WHERE email = 'staff@example.com';
+UPDATE user SET role = 'staff' WHERE email = 'staff@example.com';
 ```
 
 ## OAuth (Google)
 
-Google sign-in is configured in the Neon Console. The flow:
-
-```
-1. User clicks "Sign in with Google"
-2. Client calls authClient.signIn.social({ provider: "google" })
-3. Redirects to /api/auth/sign-in/social/google → Neon Auth → Google
-4. Google redirects back with session verifier
-5. hooks.server.ts exchanges verifier for session cookies
-6. User is logged in
-```
-
-OAuth users have their email automatically verified.
+Set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` to enable Google sign-in. `authClient.signIn.social({ provider: "google" })` runs the standard OAuth redirect flow through Better Auth; OAuth users have their email verified automatically.

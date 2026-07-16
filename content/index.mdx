@@ -1,8 +1,8 @@
 # Introduction
 
-**Hoikka** is an opinionated, full-stack e-commerce platform built with SvelteKit.
+**Hoikka** is a lightweight, full-stack e-commerce platform built with SvelteKit.
 
-It includes the storefront, admin panel, and business logic in a single lightweight codebase and is ready to deploy serverless.
+It bundles the storefront, admin panel, and business logic in a single codebase, stores everything in **SQLite**, and runs on either a **Node.js** server or **Cloudflare Workers** (D1 + R2) — you pick with one env var, `HOIKKA_TARGET`.
 
 ## Philosophy: Code Over Configuration
 
@@ -10,10 +10,29 @@ Hoikka follows the principles of the [Rails Doctrine](https://rubyonrails.org/do
 
 There are no plugin systems, configuration DSLs, or hidden admin logic. Everything is plain TypeScript that you can read, change, and extend directly.
 
-This also makes Hoikka well-suited for AI-assisted development: the codebase is structured so that both humans and AI agents can reason about it easily.
+This also makes Hoikka well-suited for AI-assisted development: the codebase is structured so that both humans and AI agents can reason about it easily. A local [MCP server](/core/services#mcp-server) (`pnpm mcp`) exposes schema, catalog, and order tools to AI assistants.
+
+## What's Included
+
+- **Storefront + admin** in one SvelteKit app
+- **SQLite everywhere** — a local file on Node.js, D1 on Cloudflare, one Drizzle schema for both
+- **Cookie-based cart** — the cart lives entirely in a cookie while shopping, so there are zero database writes until checkout starts
+- **Products & variants** with facets, collections, categories, and full-text search
+- **Orders & checkout** with a state-machine order lifecycle
+- **Payments** — pluggable providers (Stripe and a mock provider)
+- **Shipping** — pluggable providers (flat-rate built in)
+- **Tax** — Finnish VAT with gross pricing and B2B tax exemption
+- **Promotions** — coupon codes and automatic discounts
+- **B2B** — customer groups with per-group variant pricing
+- **Reviews**, **content pages**, **digital products**, and **asset management**
+- **Integrations** — a dependency-free outbox for webhooks, ERP/PIM sync, and background jobs that works on both targets
 
 ## Quick Start
 
-[![Deploy with Vercel](https://vercel.com/button)](https://www.hoikka.dev/deploy)
+Scaffold a new store:
 
-Or follow the [installation instructions](/getting-started/installation).
+```bash
+pnpx create-hoikka-app my-store
+```
+
+Then follow the [installation instructions](/getting-started/installation).

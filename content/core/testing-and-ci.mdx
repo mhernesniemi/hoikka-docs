@@ -1,30 +1,36 @@
 
-# CI & Observability
+# Testing & CI
 
-## Unit Tests
+## Unit tests
 
-Unit tests use [Vitest](https://vitest.dev/) and live alongside the source files they cover (e.g. `utils.ts` → `utils.test.ts`).
+Unit and integration tests use [Vitest](https://vitest.dev/) and live alongside the source they cover (e.g. `tax.ts` → `tax.test.ts`). There are ~183 tests.
 
 ```bash
-# Run all unit tests
-bun run test
+# Run all tests once
+pnpm test
 
 # Watch mode during development
-bun run test:unit
+pnpm test:unit
 ```
 
-Test files cover pure utility functions such as price formatting, tax calculation, shipping rules, promotion logic, slug generation, and database error handling. Tests are co-located with their source under `src/lib/` and `src/lib/server/`.
+Most tests cover pure functions — price formatting, tax calculation, shipping rules, promotion logic, cart/wishlist cookies, order utilities. Some are **DB-backed integration tests** that run against a real migrated in-memory SQLite database: they mock `$env/dynamic/private` to point the db seam at `:memory:`, then `createNodeDb` runs the full `drizzle/` migration chain (FTS table, seed defaults, stock triggers) so assertions hit real SQL.
 
-## End-to-End Tests
+```typescript
+vi.mock("$env/dynamic/private", () => ({ env: { DATABASE_URL: ":memory:" } }));
+import { db } from "../db/index.js";
+```
 
-E2E tests use [Playwright](https://playwright.dev/) and run against a Vercel preview deployment.
+## End-to-end tests
+
+E2E tests use [Playwright](https://playwright.dev/) and live in `e2e/`. `pnpm test:e2e` boots its own dev server (on a dedicated port) unless `BASE_URL` is set.
 
 ```bash
-# Run locally (requires BASE_URL)
-BASE_URL=http://localhost:5173 bun run test:e2e
-```
+# Boots its own server
+pnpm test:e2e
 
-Test files live in the project root under `tests/`.
+# Against an already-running server
+BASE_URL=http://localhost:5173 pnpm test:e2e
+```
 
 ## Logging
 
@@ -39,28 +45,14 @@ export const handleError: HandleServerError = async ({ error, event, status, mes
 };
 ```
 
-## Telemetry
+On the Cloudflare target, Workers `observability` is enabled in `wrangler.jsonc`, so logs are available in the Cloudflare dashboard.
 
-OpenTelemetry tracing is integrated via `src/lib/server/telemetry.ts`. The `withSpan` helper wraps async operations with named spans:
+## CI workflows
 
-```typescript
-import { withSpan } from "$lib/server/telemetry";
-
-const user = await withSpan("auth.validate_session", async () => {
-	// ...
-});
-```
-
-Database queries are also traced through a custom Drizzle `OTelLogger` in `src/lib/server/db/index.ts`, which emits a span for each query with the SQL statement and parameter count.
-
-## CI Workflows
-
-Three GitHub Actions workflows run on pull requests to `main`:
+Three GitHub Actions workflows run on pull requests to `main`. All use `pnpm` and Node 22.
 
 | Workflow | File | Purpose |
 |----------|------|---------|
-| **CI** | `.github/workflows/ci.yml` | Linting (Prettier + ESLint) and type checking (`svelte-check`) |
-| **Unit Tests** | `.github/workflows/unit-tests.yml` | Runs `bun run test` |
-| **E2E Tests** | `.github/workflows/e2e.yml` | Runs Playwright against the Vercel preview deployment |
-
-All workflows use `oven-sh/setup-bun@v2` with the latest Bun version.
+| **CI** | `.github/workflows/ci.yml` | Lint (`pnpm lint`) + type check (`pnpm check`), then a build matrix over **both** targets (`node` and `cloudflare`) |
+| **Unit Tests** | `.github/workflows/unit-tests.yml` | Runs `pnpm test` |
+| **E2E Tests** | `.github/workflows/e2e.yml` | Seeds a throwaway SQLite database, then runs Playwright |

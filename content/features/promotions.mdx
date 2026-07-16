@@ -54,6 +54,15 @@ const promos = await promotionService.listActiveAutomatic();
 const discounts = await promotionService.getActiveProductDiscounts();
 ```
 
+All discount amounts — for coupon codes, automatic promotions, and totals
+recalculation — are computed by a single private method,
+`OrderService.computePromotionDiscount`, so the math is defined in exactly one
+place and behaves identically across every entry point.
+
+`getActiveProductDiscounts()` runs on every storefront page load, so its result is
+cached briefly (per server process / Workers isolate, ~60s TTL). Admin mutations
+clear the cache so price changes show up immediately.
+
 ## Schema
 
 Promotions are stored in the `promotions` table with junction tables `promotion_products` and `promotion_collections` for targeting. Applied discounts are tracked in `order_promotions`.

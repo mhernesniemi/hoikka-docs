@@ -3,6 +3,8 @@
 
 All business logic lives in `src/lib/server/services/`. Each service is a singleton class.
 
+Services import `db` from the database seam (`src/lib/server/db/index.ts`) rather than opening a connection themselves. The seam resolves to a local better-sqlite3 database on the Node.js target and to the D1 binding on Cloudflare, so the same service code runs on both targets. See [Database](/core/database).
+
 ## Product Service
 
 Manages products and their variants.
@@ -41,11 +43,12 @@ Manages the full order lifecycle, including cart operations.
 ```typescript
 import { orderService } from "$lib/server/services/orders";
 
-// Cart operations (orders in "created" state act as carts)
-const cart = await orderService.getOrCreateActiveCart({ cartToken, customerId });
-await orderService.addLine(orderId, { variantId, quantity });
-await orderService.updateLineQuantity(orderId, lineId, quantity);
-await orderService.removeLine(orderId, lineId);
+// The cart is a cookie — an order row is created only when checkout starts,
+// snapshotting the cookie lines into order lines with 15-min stock reservations.
+const { order, checkoutToken } = await orderService.startCheckout(cartLines, {
+	customerId,
+	checkoutToken
+});
 
 // State transitions (all go through transitionState)
 await orderService.transitionState(orderId, "payment_pending");
@@ -103,15 +106,47 @@ See [Localization](/core/localization) for the full API and admin UI integration
 
 See `src/lib/server/services/` for all available services including:
 
+- `categoryService` — Category tree, breadcrumbs, and product assignment
+- `facetService` — Facets and facet values (filterable attributes)
+- `collectionService` — Product collections (rule-based)
 - `taxService` — Tax rate lookups and calculations
 - `paymentService` — Payment provider orchestration
 - `shippingService` — Shipping provider orchestration
-- `collectionService` — Product collections
 - `promotionService` — Discount and promotion rules
 - `reservationService` — Stock reservations
 - `customerGroupService` — Customer group management
 - `contentPageService` — CMS content pages
 - `translationService` — Multi-language translations for all entities
 - `assetService` — Image/file management
-- `wishlistService` — Customer wishlists
+- `relatedProductService` — Related-product links
+- `digitalDeliveryService` — Delivery of digital products after payment
 - `reviewService` — Product reviews
+
+Product search and reindexing live in `product-search.ts`, exposed as functions
+(`listProducts`, `quickSearchProducts`, `reindexProduct`, `reindexAll`, …) rather
+than a class.
+
+> The cart is a cookie, not a service singleton, and the wishlist is likewise
+> just a cookie of product ids — there is no `wishlistService`. See
+> [Cart](/features/cart) and [Wishlists](/features/wishlists).
+
+### Promotion math
+
+All promotion discount math is centralized in
+`OrderService.computePromotionDiscount` — coupon codes, automatic promotions, and
+totals recalculation all route through it, so the applied discount is computed the
+same way everywhere. See [Promotions](/features/promotions).
+
+## Emitting events
+
+Services and routes record out-of-band work by calling `emitEvent(type, payload)`
+(a durable outbox insert) rather than doing it inline — e.g. the checkout
+completion emits `order.paid`. A scheduled drain processes these with retry. See
+[Integrations](/integrations/overview).
+
+## MCP server
+
+Hoikka ships a local **MCP server** (`pnpm mcp`, defined in `scripts/mcp.ts` and
+registered in `.mcp.json`) that exposes schema, catalog, and order tools to AI
+assistants over stdio. Point an MCP-capable client at it to let an agent inspect
+the schema and query products and orders directly.

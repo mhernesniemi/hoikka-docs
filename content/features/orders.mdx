@@ -1,73 +1,95 @@
+import { Callout } from 'nextra/components'
 
 # Orders
 
-Orders track customer purchases through their lifecycle. Carts are orders in `created` state — there is no separate cart entity.
+Orders track customer purchases through a state machine. Unlike the [cart](/features/cart) (a cookie), an order row is only created when checkout starts.
 
 ## Order States
 
 ```
 created → payment_pending → paid → shipped → delivered
-                              ↘ cancelled
+   ↓            ↓             ↓
+cancelled   cancelled     cancelled
 ```
 
-| State             | Description             |
-| ----------------- | ----------------------- |
-| `created`         | Active cart             |
-| `payment_pending` | Checkout initiated      |
-| `paid`            | Payment received        |
-| `shipped`         | Shipped to customer     |
-| `delivered`       | Received by customer    |
-| `cancelled`       | Order cancelled         |
+| State             | Description                          |
+| ----------------- | ------------------------------------ |
+| `created`         | Draft checkout (`active=true`)       |
+| `payment_pending` | Checkout submitted, becomes a real order |
+| `paid`            | Payment received                     |
+| `shipped`         | Shipped to customer                  |
+| `delivered`       | Received by customer                 |
+| `cancelled`       | Order cancelled                      |
 
-## Cart to Order
+Allowed transitions are enforced by `STATE_TRANSITIONS` in `src/lib/server/services/order-utils.ts`. `created`, `payment_pending`, and `paid` can each move to `cancelled`; `shipped` can only move to `delivered`.
 
-Carts are orders in `created` state. During checkout, shipping and customer info are set, then the order transitions through states:
+## Starting Checkout
 
-```typescript
-// Set checkout details
-await orderService.setShippingAddress(orderId, address);
-await orderService.setCustomerEmail(orderId, email);
-await orderService.updateTotals(orderId);
+The cart cookie first touches the database in `orderService.startCheckout`. It creates (or resumes) a draft order, snapshots the cookie lines into `order_lines` with prices/names/tax from `getCartView`, and reserves stock for 15 minutes.
 
-// Transition to payment
-await orderService.transitionState(orderId, "payment_pending");
+```typescript filename="src/lib/server/services/orders.ts"
+const { order, checkoutToken, isNew, stockErrors } =
+  await orderService.startCheckout(cartLines, { customerId, checkoutToken });
 ```
+
+- The draft is `active=true, state=created`, identified by the `checkout_token` cookie (the `orders.checkoutToken` column).
+- If the cookie no longer matches the draft's lines, the draft is wiped and rebuilt.
+- Quantities are clamped to available stock; anything unavailable is reported in `stockErrors` rather than failing the whole checkout.
+
+<Callout type="info">
+Stock reservations are created only at checkout and expire after 15 minutes. There is no background job — expired reservations are cleaned up opportunistically at checkout entry (`reservationService.deleteExpired`).
+</Callout>
 
 ## State Transitions
 
-```typescript
+```typescript filename="src/lib/server/services/orders.ts"
 await orderService.transitionState(orderId, "payment_pending");
 await orderService.transitionState(orderId, "paid");
 await orderService.transitionState(orderId, "shipped");
 await orderService.transitionState(orderId, "delivered");
-await orderService.transitionState(orderId, "cancelled");
 ```
+
+Key side effects:
+
+- **`payment_pending`** — the draft becomes a real order (`active=false`) and `orderPlacedAt` is set.
+- **`paid`** — stock is validated one final time, reserved stock is permanently deducted from tracked variants, reservations are released, and promotion usage counts increment.
+- **`cancelled`** — stock is restored if the order was already `paid`/`shipped`, and any reservations are released.
 
 ## Order Lines
 
-Each order contains line items:
+Lines snapshot the product/variant name, SKU, and pricing (including a full tax breakdown) at checkout time:
 
 ```typescript
 order.lines = [
-	{
-		variantId: 456,
-		variant: { sku: "SHIRT-M", name: "Blue Shirt - Medium" },
-		quantity: 2,
-		unitPrice: 2999,
-		total: 5998
-	}
+  {
+    variantId: 456,
+    productName: "Blue Shirt",
+    variantName: "Medium",
+    sku: "SHIRT-M",
+    quantity: 2,
+    unitPrice: 2999,
+    lineTotal: 5998,
+    taxCode: "standard",
+    taxRate: 2400,   // basis points, 4 decimals (0.24)
+    taxAmount: 1160,
+    unitPriceNet: 2419,
+    lineTotalNet: 4838
+  }
 ];
 ```
 
 ## Order Code
 
-Orders have a human-readable code:
+Orders have a human-readable code like `ORD-XXXXXXXX`:
 
 ```typescript
-// Lookup by code
-const order = await orderService.getByCode("ORD-2024-00001");
+const order = await orderService.getByCode("ORD-AB12CD34");
 ```
 
 ## Guest Orders
 
-Orders can be placed without an account. Guest orders use `cartToken` for identification and store an email address directly on the order.
+Orders can be placed without an account. Guest checkouts are tracked by the `checkout_token` cookie and store `customerEmail` directly on the order.
+
+<Callout type="warning">
+`currencyCode` and `exchangeRate` columns exist on `orders`, but they are vestigial — EUR is hardcoded and no currency conversion is performed.
+</Callout>

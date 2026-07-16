@@ -1,157 +1,97 @@
+import { Callout } from 'nextra/components'
 
 # Assets & Images
 
-Hoikka uses [Vercel Blob](https://vercel.com/docs/storage/vercel-blob) for image storage and [Vercel Image Optimization](https://vercel.com/docs/image-optimization) for on-the-fly transforms.
+Hoikka stores uploaded images behind a **storage seam** and serves them through a route that resizes on demand. The same `/uploads/...` URLs work on both deployment targets.
 
-## Why Vercel Blob + Image Optimization?
+## Storage Seam
 
-- **Zero config** - Auto-provisioned when connecting Blob store in Vercel dashboard
-- **CDN delivery** - Fast global delivery via Vercel's edge network
-- **On-the-fly transforms** - Resize and optimize via `/_vercel/image` endpoint
-- **Automatic format** - WebP/AVIF served based on browser support
-- **No external accounts** - Everything lives in your Vercel project
+`src/lib/server/storage/{index,fs,r2}.ts` mirror the db seam: when the R2 binding (`ASSETS_BUCKET`) is present on the request (Cloudflare target) it is used; otherwise files go to the local filesystem under `data/uploads` (node target).
 
-## Configuration
-
-### Environment Variables
-
-```bash
-# Auto-provisioned by Vercel Blob integration
-BLOB_READ_WRITE_TOKEN=
+```typescript filename="src/lib/server/storage/index.ts"
+export const upload = /* → { url } */;
+export const list   = /* ... */;
+export const remove = /* ... */;
+export const get    = /* → { body, contentType, size } | null */;
 ```
 
-### Image Optimization Config
+## Serving & Resizing
 
-In `vercel.json`:
+`/uploads/[...path]` serves the file from the active backend and resizes it on demand via `?w=<width>&q=<quality>`:
 
-```json
-{
-  "images": {
-    "sizes": [64, 100, 128, 150, 200, 400, 600, 768, 1200],
-    "remotePatterns": [{ "hostname": "*.public.blob.vercel-storage.com" }]
-  }
-}
-```
-
-## Uploading Images
-
-### Server-side Upload
-
-```typescript
-import { put } from "@vercel/blob";
-
-const blob = await put(`products/${file.name}`, file, {
-  access: "public",
-  addRandomSuffix: true
-});
-
-// blob.url = "https://xxx.public.blob.vercel-storage.com/products/image-abc123.jpg"
-```
-
-### Admin Upload Flow
-
-1. User selects file in admin ImagePicker
-2. Client sends file to `/api/assets/upload` (our server route)
-3. Server uploads to Vercel Blob via `put()`
-4. Server returns the Blob URL
-5. Client submits asset record to save in database
-6. Asset linked to product/collection
-
-```typescript
-// Upload route (src/routes/api/assets/upload/+server.ts)
-const blob = await put(`${folder}/${file.name}`, file, {
-  access: "public",
-  addRandomSuffix: true
-});
-
-return json({ url: blob.url, name: file.name });
-```
-
-## Image Optimization
-
-Vercel Image Optimization resizes and optimizes images on the fly:
+- **Node target** — `sharp` with a disk cache (`src/lib/server/images/node.ts`).
+- **Cloudflare target** — the Cloudflare Images binding (`IMAGES`), falling back to the original when the binding isn't configured, plus edge caching of transformed variants.
 
 ```
-/_vercel/image?url={encoded_blob_url}&w={width}&q={quality}
+/uploads/products/shirt-abc123.jpg?w=400&q=80
 ```
 
-### Helper Function
+Width is clamped to 16–2400, quality to 30–95 (default 80). Responses are `immutable` (filenames carry a random id).
 
-```typescript filename="src/lib/image.ts"
-import { dev } from "$app/environment";
+## The `<Img>` Component
 
-export function imageUrl(source: string, width: number, quality = 75): string {
-  if (dev) return source;
-  return `/_vercel/image?url=${encodeURIComponent(source)}&w=${width}&q=${quality}`;
-}
-```
-
-The `/_vercel/image` endpoint only exists on Vercel's infrastructure. In local development, the helper returns the raw Vercel Blob URL directly. Images will be unoptimized (full-size) locally — this is expected.
-
-### Usage in Components
+Prefer `src/lib/components/storefront/Img.svelte` over raw `<img>` — it emits `src` plus a 1x/2x `srcset`, lazy-loads by default, and positions the crop on the asset's focal point.
 
 ```svelte
 <script>
-  import { imageUrl } from "$lib/image";
-
-  let { product } = $props();
+  import Img from "$lib/components/storefront/Img.svelte";
+  let { asset, name } = $props();
 </script>
 
-<img
-  src={imageUrl(product.featuredAsset.source, 400)}
-  alt={product.name}
-  loading="lazy"
+<Img
+  src={asset.source}
+  alt={name}
+  width={400}
+  sizes="(max-width: 640px) 50vw, 400px"
+  focalX={asset.focalX}
+  focalY={asset.focalY}
+  class="h-full w-full object-cover"
 />
 ```
 
-### Common Sizes
+### Helpers
 
-| Context | Width | Usage |
-|---------|-------|-------|
-| Thumbnails | 100 | Cart, orders, wishlist |
-| Admin grid | 200 | Product list |
-| Product cards | 400 | Category/collection pages |
-| Product detail | 600 | Main product image |
-| Content pages | 768 | Page hero images |
-| OG images | 1200 | Social sharing meta tags |
+```typescript filename="src/lib/image.ts"
+imageUrl(source, width?, quality?);   // appends ?w=&q= for /uploads URLs; passes external URLs through
+imageSrcset(source, width, quality?); // "url 1x, url@2x 2x" for /uploads; undefined for external
+focalPosition(focalX, focalY);        // CSS object-position from 0–1 coords
+```
+
+Only `/uploads/...` sources are transformed; external URLs are returned untouched.
+
+## Uploading
+
+Uploads go through `POST /api/assets/upload` (`src/routes/api/assets/upload/+server.ts`), restricted to `admin`/`staff` and blocked in demo mode. It accepts JPEG, PNG, GIF, WebP, SVG, or AVIF up to 10 MB, writes to the storage backend via `upload()`, and returns the `/uploads/...` URL plus metadata.
+
+```
+1. Admin ImagePicker selects a file
+2. Client POSTs it to /api/assets/upload
+3. Server writes it to the active backend (fs or R2)
+4. Server returns { url, name, width, height, size }
+5. Client saves the asset record to the database
+```
 
 ## Database Schema
 
 Assets are stored in the `assets` table:
 
-```typescript
+```typescript filename="src/lib/server/db/schema.ts"
 assets
-├── id: serial primary key
-├── name: varchar        // File name
-├── type: text           // image, video, document, other
-├── mimeType: varchar    // image/jpeg, image/png, etc.
-├── source: varchar      // Vercel Blob URL
-├── width: integer
-├── height: integer
-├── fileSize: integer
-├── alt: text            // Alt text for accessibility
-├── focalX: numeric      // 0–1 horizontal focal point
-├── focalY: numeric      // 0–1 vertical focal point
-├── createdAt: timestamp
+├── id
+├── name         // file name
+├── type         // image | video | document | other
+├── mimeType     // image/jpeg, image/png, ...
+├── width, height, fileSize
+├── source       // /uploads/... URL
+├── alt          // alt text
+├── focalX       // 0–1 horizontal focal point (default 0.5)
+├── focalY       // 0–1 vertical focal point (default 0.5)
+└── createdAt
 ```
 
-Products reference assets:
+Products reference assets by `featuredAssetId`:
 
 ```typescript
 products.featuredAssetId → assets.id
 product_variants.featuredAssetId → assets.id
-```
-
-## Deleting Images
-
-When an asset is deleted from the admin, the Vercel Blob file is also removed:
-
-```typescript
-import { del } from "@vercel/blob";
-
-// Delete from Blob storage
-await del(asset.source);
-
-// Delete from database
-await db.delete(assets).where(eq(assets.id, assetId));
 ```

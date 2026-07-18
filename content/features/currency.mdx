@@ -17,9 +17,11 @@ import { formatPrice } from "$lib/utils";
 formatPrice(2999); // "29,99 €"
 ```
 
-`formatPrice` reads the base currency (`BASE_CURRENCY = "EUR"`) and the display
-locale from config. Because nothing sets a non-EUR currency, you will only ever see
-EUR output in practice.
+`formatPrice(cents, currencyCode = BASE_CURRENCY)` formats via `Intl.NumberFormat`
+with a per-currency locale built into `$lib/utils` (fi-FI for EUR); unknown codes
+fall back to `"29.99 XXX"`. A `getCurrencySymbol(code)` helper exists as well.
+Because nothing ever passes a non-EUR currency, you will only see EUR output in
+practice.
 
 ## What is a placeholder
 
@@ -31,15 +33,13 @@ exchange_rate NUMERIC DEFAULT '1' NOT NULL    -- always 1
 ```
 
 New orders are created with `currencyCode: "EUR"` and `exchangeRate: "1"`, and
-**nothing ever changes them**. There is no currency selector, no rate lookup, and no
-place in the checkout or pricing path that converts amounts.
-
-A `convertPrice(cents, rate)` helper exists in `$lib/utils`, but **no application
-code calls it** — it is unused outside of its unit test.
+**nothing ever changes them**. There is no currency selector, no rate lookup, no
+conversion helper, and no place in the checkout or pricing path that converts
+amounts.
 
 ## If you want real multi-currency
 
 You would need to build it: a way to select/detect a currency, a source of exchange
 rates, conversion at display and at order creation (stamping the locked rate onto the
-order), and formatting per currency. The schema columns and the `convertPrice` helper
-are a starting point, not a working feature.
+order), and formatting per currency. The schema columns are a starting point, not a
+working feature.

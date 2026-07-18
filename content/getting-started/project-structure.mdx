@@ -11,6 +11,7 @@ src/
 │   │   ├── services/      # Business logic (products, orders, cart, payments, shipping, …)
 │   │   ├── storage/       # Asset storage seam (fs / r2 + stubs)
 │   │   ├── images/        # Image processing (sharp on node)
+│   │   ├── integrations/  # Outbox events, handlers, scheduler, inbound webhooks
 │   │   ├── auth.ts        # Better Auth setup
 │   │   ├── cart-cookie.ts # Cookie-backed cart
 │   │   └── wishlist-cookie.ts
@@ -22,14 +23,17 @@ src/
 ├── routes/
 │   ├── (storefront)/      # Customer-facing store
 │   ├── admin/             # Admin dashboard (incl. /admin/setup)
-│   ├── api/               # API endpoints (auth, assets)
+│   ├── api/               # API endpoints (auth, assets, tasks, webhooks)
 │   └── uploads/[...path]/ # Local/R2 image-serving route
 ├── hooks.server.ts        # Auth, customer sync, demo guard
 scripts/                   # seed.ts, mcp.ts, tooling
 drizzle/                   # SQLite migrations (incl. raw-SQL FTS5)
 packages/
 └── create-hoikka-app/     # npm installer / scaffolder
+workers/cron.ts            # Companion cron worker (drains the outbox on Cloudflare)
+hoikka-target.js           # HOIKKA_TARGET resolution shared by svelte/vite configs
 wrangler.jsonc             # Cloudflare Workers config (D1, R2, images)
+wrangler.cron.jsonc        # Config for the cron worker
 ```
 
 ## Notes

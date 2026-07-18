@@ -61,14 +61,16 @@ Only `/uploads/...` sources are transformed; external URLs are returned untouche
 
 ## Uploading
 
-Uploads go through `POST /api/assets/upload` (`src/routes/api/assets/upload/+server.ts`), restricted to `admin`/`staff` and blocked in demo mode. It accepts JPEG, PNG, GIF, WebP, SVG, or AVIF up to 10 MB, writes to the storage backend via `upload()`, and returns the `/uploads/...` URL plus metadata.
+Uploads go through `POST /api/assets/upload` (`src/routes/api/assets/upload/+server.ts`), restricted to `admin`/`staff` and blocked in demo mode. It accepts JPEG, PNG, GIF, WebP, SVG, or AVIF up to 10 MB, writes to the storage backend via `upload()`, and returns the `/uploads/...` URL plus metadata. Large JPEG/PNG/WebP files (over 200 KB) are re-encoded as WebP masters capped at 2400px, so serving transforms never read megabyte-class originals.
 
 ```
-1. Admin ImagePicker selects a file
-2. Client POSTs it to /api/assets/upload
+1. Admin ImagePicker selects one or more files
+2. Client POSTs each file to /api/assets/upload
 3. Server writes it to the active backend (fs or R2)
 4. Server returns { url, name, width, height, size }
-5. Client saves the asset record to the database
+5. Client submits all files' metadata to the page's form action
+   in one request (saveImages in src/lib/admin-upload.ts), which
+   saves the asset records; errors surface as a toast
 ```
 
 ## Database Schema

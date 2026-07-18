@@ -3,7 +3,7 @@
 
 ## Unit tests
 
-Unit and integration tests use [Vitest](https://vitest.dev/) and live alongside the source they cover (e.g. `tax.ts` → `tax.test.ts`). There are ~183 tests.
+Unit and integration tests use [Vitest](https://vitest.dev/) and live alongside the source they cover (e.g. `tax.ts` → `tax.test.ts`). There are 204 tests.
 
 ```bash
 # Run all tests once
@@ -22,7 +22,7 @@ import { db } from "../db/index.js";
 
 ## End-to-end tests
 
-E2E tests use [Playwright](https://playwright.dev/) and live in `e2e/`. `pnpm test:e2e` boots its own dev server (on a dedicated port) unless `BASE_URL` is set.
+E2E tests use [Playwright](https://playwright.dev/) and live in `e2e/` (11 tests across the smoke and checkout specs). `pnpm test:e2e` boots its own dev server (on a dedicated port) unless `BASE_URL` is set.
 
 ```bash
 # Boots its own server
@@ -47,12 +47,15 @@ export const handleError: HandleServerError = async ({ error, event, status, mes
 
 On the Cloudflare target, Workers `observability` is enabled in `wrangler.jsonc`, so logs are available in the Cloudflare dashboard.
 
+## Performance budgets
+
+`pnpm perf <url> [url...]` (`scripts/perf.mjs`) runs Lighthouse (mobile, applied throttling) against the given URLs and fails when a budget (performance score, LCP, CLS, TBT) is exceeded. It warms the edge caches with two fetches per URL first, discards a bootstrap Lighthouse run, and retries a failed budget once so a single jittery run doesn't fail the check.
+
 ## CI workflows
 
-Three GitHub Actions workflows run on pull requests to `main`. All use `pnpm` and Node 22.
+Two GitHub Actions workflows run on pull requests to `main`. Both use `pnpm` and Node 22.
 
 | Workflow | File | Purpose |
 |----------|------|---------|
-| **CI** | `.github/workflows/ci.yml` | Lint (`pnpm lint`) + type check (`pnpm check`), then a build matrix over **both** targets (`node` and `cloudflare`) |
-| **Unit Tests** | `.github/workflows/unit-tests.yml` | Runs `pnpm test` |
+| **CI** | `.github/workflows/ci.yml` | Lint (`pnpm lint`) + type check (`pnpm check`), unit tests (`pnpm test`), and a build matrix over **both** targets (`node` and `cloudflare`) |
 | **E2E Tests** | `.github/workflows/e2e.yml` | Seeds a throwaway SQLite database, then runs Playwright |

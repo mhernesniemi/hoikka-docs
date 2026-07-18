@@ -7,7 +7,7 @@ Hoikka follows a service-oriented architecture adapted for SvelteKit's patterns.
 
 The platform-specific pieces are hidden behind two "seams" so the rest of the app never branches on the target:
 
-- **Database** (`src/lib/server/db/index.ts`) — `db` is a lazy `Proxy`. On node it resolves to a `better-sqlite3` singleton (`node.ts`, migrates on first use). On Cloudflare it resolves to a Drizzle client over the D1 binding (`platform.env.DB`), cached per request on `event.locals`.
+- **Database** (`src/lib/server/db/index.ts`) — `db` is a lazy `Proxy`. On node it resolves to a `better-sqlite3` singleton (`node.ts`, migrates on first use). On Cloudflare it resolves to a Drizzle client over the D1 binding (`platform.env.DB`), cached per request on `event.locals`. Multi-statement writes go through the `atomic()` helper: `batch()` on D1, `BEGIN`/`COMMIT` on better-sqlite3. See [Database](/core/database#atomic-writes).
 - **Storage** (`src/lib/server/storage/index.ts`) — mirrors the db seam. When the R2 binding is present the request uses R2; otherwise files go to the local filesystem. Public URLs are `/uploads/...` on both.
 
 `svelte.config.js` picks the adapter (`adapter-node` vs `adapter-cloudflare`) and `vite.config.ts` aliases node-only modules (`better-sqlite3`, `node:fs` storage, `sharp` images) to stubs on the Cloudflare build so they never enter the Workers bundle.
@@ -15,7 +15,7 @@ The platform-specific pieces are hidden behind two "seams" so the rest of the ap
 ## Request flow
 
 ```
-Request → hooks.server.ts (session, customer sync, demo guard)
+Request → hooks.server.ts (demo guard, edge cache, session + customer sync)
     ↓
 +page.server.ts (thin controller: load + actions)
   or  *.remote.ts (query / command)
@@ -74,13 +74,13 @@ Payments and shipping use a provider pattern for easy swapping:
 ```typescript
 interface PaymentProvider {
   code: string;
-  createPayment(order: Order): Promise<PaymentInfo>;
-  confirmPayment(transactionId: string): Promise<PaymentStatus>;
+  createPayment: (order: OrderWithRelations) => Promise<PaymentInfo>;
+  confirmPayment?: (paymentId: string) => Promise<PaymentStatus>;
 }
 
 const PROVIDERS = new Map<string, PaymentProvider>([
-  ["stripe", new StripeProvider()],
-  ["mock", new MockProvider()]
+  ["mock", new MockProvider()],
+  ["stripe", new StripeProvider()]
 ]);
 ```
 

@@ -18,13 +18,17 @@ Hoikka supports multiple shipping providers with a unified interface.
 ```typescript
 const rates = await shippingService.getAvailableRates(order);
 
-// Returns available options
+// Aggregates rates from all active providers; each rate is stamped with the
+// shipping method it came from
 [
 	{
 		id: "flat_rate",
 		name: "Standard Shipping",
 		price: 590,
-		estimatedDeliveryDays: 5
+		estimatedDeliveryDays: 5,
+		description: "Standard delivery",
+		methodId: 1,
+		methodCode: "flat_rate"
 	}
 ];
 ```
@@ -41,24 +45,27 @@ After order is confirmed:
 
 ```typescript
 const shipment = await shippingService.createShipment(order);
-// Returns: { trackingNumber: 'FLAT_0000000123', metadata: { ... } }
+// Returns: { trackingNumber: 'FLAT0000000123', metadata: { ... } }
 ```
+
+The tracking number is saved on `order_shipping`; the status stays `pending` until it is updated manually (`updateShippingStatus`) or by tracking.
 
 ## Tracking
 
 ```typescript
 const status = await shippingService.trackShipment(orderId);
-// Returns: 'in_transit' | 'delivered' | etc.
+// Returns: 'in_transit' | 'delivered' | etc., or null when there is no
+// tracking number or the provider does not support tracking
 ```
 
 ## Shipping States
 
-| State        | Description                  |
-| ------------ | ---------------------------- |
-| `pending`    | Awaiting shipment creation   |
-| `shipped`    | Shipment created, in transit |
-| `in_transit` | Package is being delivered   |
-| `delivered`  | Package delivered            |
+| State        | Description                   |
+| ------------ | ----------------------------- |
+| `pending`    | Default, also after shipment creation |
+| `shipped`    | Manually marked as shipped    |
+| `in_transit` | Package is being delivered    |
+| `delivered`  | Package delivered             |
 
 ## Built-in Provider
 

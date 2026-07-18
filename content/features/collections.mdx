@@ -19,10 +19,11 @@ Collections use filter rules stored as rows in `collection_filters`. Products ma
 
 ```typescript
 // Add a facet filter — include products with specific facet values
+// (value is an array of facet value ids; matches product- and variant-level facets)
 await collectionService.addFilter(collectionId, {
 	field: "facet",
 	operator: "in",
-	value: { facetId: 5, valueIds: [12, 13] }
+	value: [12, 13]
 });
 
 // Add a price filter — products under 50€
@@ -62,4 +63,11 @@ const { items, pagination } = await collectionService.getProductsForCollection(
   collection.id,
   { limit: 20, offset: 0 }
 );
+
+// Count matching products without hydrating them
+const count = await collectionService.getProductCount(collection.id);
 ```
+
+Returned products are hydrated through `productService.loadProductsRelations`, a batched loader with a fixed query count.
+
+Collection description HTML (and its translations) is sanitized on save with `src/lib/server/sanitize.ts`.

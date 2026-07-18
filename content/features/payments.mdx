@@ -73,23 +73,20 @@ const { error } = await stripeRef.confirmPayment({
 });
 ```
 
-### Webhook Handler
+### Server Confirmation
 
-```typescript filename="src/routes/api/webhooks/stripe/+server.ts"
-export const POST = async ({ request }) => {
-	const sig = request.headers.get("stripe-signature");
-	const body = await request.text();
+There is no Stripe webhook. After the client-side `confirmPayment`, `completeOrder` (`src/lib/remote/checkout.remote.ts`) transitions the draft to `payment_pending` and checks the PaymentIntent status via the provider:
 
-	const event = stripe.webhooks.constructEvent(body, sig, WEBHOOK_SECRET);
+```typescript
+// paymentId is the internal payments row id, not the Stripe transaction id
+const paymentStatus = await paymentService.confirmPayment(payment.id);
 
-	if (event.type === "payment_intent.succeeded") {
-		const paymentIntent = event.data.object;
-		await paymentService.confirmPayment(paymentIntent.id);
-	}
-
-	return new Response("OK");
-};
+if (isPaymentSuccessful(paymentStatus)) {
+	await orderService.transitionState(order.id, "paid");
+}
 ```
+
+The generic `/api/webhooks/[provider]` endpoint is an HMAC-signed receiver for integrations (ERP sync etc.) that records events to the outbox; it is not part of the payment flow.
 
 ## Payment States
 
@@ -102,6 +99,8 @@ export const POST = async ({ request }) => {
 | `refunded`   | Payment refunded                     |
 
 ## Refunds
+
+Only `settled` payments can be refunded:
 
 ```typescript
 // Full refund
@@ -136,8 +135,11 @@ class MyProvider implements PaymentProvider {
 Register in `src/lib/server/services/payments/index.ts`:
 
 ```typescript
-const PROVIDERS = new Map([
+const PROVIDERS: Map<string, PaymentProvider> = new Map([
+	["mock", new MockProvider()],
 	["stripe", new StripeProvider()],
 	["my-provider", new MyProvider()]
 ]);
 ```
+
+Or at runtime: `paymentService.registerProvider(new MyProvider())`. `confirmPayment` and `refundPayment` are optional on the interface; providers without them fall back to the stored state / throw on refund.

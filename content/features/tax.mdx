@@ -13,22 +13,23 @@ Hoikka uses a **gross pricing strategy** where all prices include VAT. This foll
 
 Finnish VAT rates are supported:
 
-| Code       | Rate | Description             |
-| ---------- | ---- | ----------------------- |
-| `standard` | 24%  | Default (most products) |
-| `food`     | 14%  | Food items              |
-| `books`    | 10%  | Books, newspapers       |
-| `zero`     | 0%   | Exports, exempt         |
+| Code       | Rate  | Description             |
+| ---------- | ----- | ----------------------- |
+| `standard` | 25.5% | Default (most products) |
+| `food`     | 13.5% | Food items              |
+| `books`    | 13.5% | Books, newspapers       |
+| `zero`     | 0%    | Exports, exempt         |
+
+Unknown tax codes fall back to the standard rate (0.255). Rates are stored in the database as integer basis points with 4 decimals (0.255 → 2550); business logic works with decimals.
 
 ## Product Tax Code
 
-Each product has a `taxCode` field:
+Tax codes live on **categories**. A product's tax code is resolved from its first assigned category at cart/checkout time; products without a category use `standard`:
 
 ```typescript
-// Default is 'standard' (24%)
-await productService.update(productId, {
-	taxCode: "food" // 14% VAT
-});
+import { categoryService } from "$lib/server/services/categories.js";
+
+const taxCode = await categoryService.getProductTaxCode(productId); // e.g. "food"
 ```
 
 ## Tax Calculation
@@ -39,8 +40,8 @@ Tax is back-calculated from the gross price:
 import { taxService } from "$lib/server/services/tax.js";
 
 // Calculate tax breakdown
-const result = taxService.calculateTax(2480, 0.24);
-// { gross: 2480, net: 2000, tax: 480 }
+const result = taxService.calculateTax(2510, 0.255);
+// { gross: 2510, net: 2000, tax: 510 }
 
 // Formula:
 // net = gross / (1 + taxRate)
@@ -53,11 +54,11 @@ Orders track tax information:
 
 ```typescript
 order = {
-	subtotal: 4960, // Gross subtotal (VAT-inclusive)
-	taxTotal: 960, // Total VAT amount
+	subtotal: 5020, // Gross subtotal (VAT-inclusive)
+	taxTotal: 1020, // Total VAT amount
 	totalNet: 4000, // Subtotal minus VAT
 	isTaxExempt: false, // Group-based exemption flag
-	total: 5960 // Final total
+	total: 6020 // Final total
 };
 ```
 
@@ -67,13 +68,13 @@ Each order line stores tax details:
 
 ```typescript
 orderLine = {
-	unitPrice: 2480, // Gross unit price
+	unitPrice: 2510, // Gross unit price
 	unitPriceNet: 2000, // Net unit price
-	lineTotal: 4960, // Gross line total
+	lineTotal: 5020, // Gross line total
 	lineTotalNet: 4000, // Net line total
 	taxCode: "standard",
-	taxRate: "0.24",
-	taxAmount: 960
+	taxRate: 2550, // basis points, 4 decimals (0.255)
+	taxAmount: 1020
 };
 ```
 
@@ -89,29 +90,28 @@ const isExempt = await taxService.isCustomerTaxExempt(customerId);
 // - Prices shown without VAT
 // - taxTotal = 0
 // - order.isTaxExempt = true
-// - Invoice shows reverse charge notice
 ```
 
 To make customers tax-exempt: create a customer group with `isTaxExempt` enabled in Admin > Customers > Groups, then add the customer to that group.
 
 ## Admin: Setting Tax Code
 
-In the admin panel, product tax code can be set:
+Tax codes are set on categories:
 
-1. Edit product > Common Fields section
-2. Select "Tax Rate" dropdown
-3. Choose: Standard (24%), Food (14%), Books (10%), or Zero (0%)
+1. Admin > Categories, edit a category
+2. Select the "Tax Rate" dropdown
+3. Choose: Standard VAT (25.5%), Food VAT (13.5%), Books VAT (13.5%), or Zero VAT (0%)
 
 ## Checkout Display
 
 The checkout shows tax breakdown:
 
 ```
-Subtotal:       49.60 EUR
-VAT (included):  9.60 EUR
+Subtotal:       50.20 EUR
+VAT (included): 10.20 EUR
 Shipping:        5.00 EUR
 ─────────────────────────
-Total:          54.60 EUR
+Total:          55.20 EUR
 ```
 
 For tax-exempt customers:
@@ -131,13 +131,13 @@ Net amount: 45.00 EUR (VAT 0%)
 import { taxService } from "$lib/server/services/tax.js";
 
 // Get rate for a tax code
-const rate = await taxService.getTaxRate("standard"); // 0.24
+const rate = await taxService.getTaxRate("standard"); // 0.255
 
 // Get all available rates
 const rates = await taxService.getAllTaxRates();
 
 // Calculate tax from gross price
-const { gross, net, tax } = taxService.calculateTax(2480, 0.24);
+const { gross, net, tax } = taxService.calculateTax(2510, 0.255);
 
 // Calculate line item tax
 const lineTax = taxService.calculateLineTax(grossUnitPrice, quantity, taxRate, isTaxExempt);

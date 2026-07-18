@@ -37,7 +37,9 @@ product.slug;        // "blue-shirt"
 product.description; // "<p>A nice shirt</p>"
 ```
 
-Translations are edited in the admin panel via language tabs on the main form. See [Localization](/core/localization) for details.
+Translations are edited in the admin panel via language tabs on the main form (`TranslationEditor.svelte`, shared by all translated entities). See [Localization](/core/localization) for details.
+
+Description HTML (default language and translations) is sanitized on save with `src/lib/server/sanitize.ts`, since it is rendered with `{@html}` on the storefront.
 
 ## Facets (Attributes)
 

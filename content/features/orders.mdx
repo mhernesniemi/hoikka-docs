@@ -33,7 +33,7 @@ const { order, checkoutToken, isNew, stockErrors } =
 ```
 
 - The draft is `active=true, state=created`, identified by the `checkout_token` cookie (the `orders.checkoutToken` column).
-- If the cookie no longer matches the draft's lines, the draft is wiped and rebuilt.
+- If the cookie no longer matches the draft's lines, the draft is wiped and rebuilt: one atomic delete plus multi-row insert via the `atomic()` helper (`src/lib/server/db/index.ts`), so a mid-sequence failure can't leave a half-built draft. (`atomic()` is the sanctioned multi-statement write path: D1 `batch()` in production, BEGIN/COMMIT on sqlite. `db.transaction` is not available on the `Db` type.)
 - Quantities are clamped to available stock; anything unavailable is reported in `stockErrors` rather than failing the whole checkout.
 
 <Callout type="info">
@@ -52,7 +52,7 @@ await orderService.transitionState(orderId, "delivered");
 Key side effects:
 
 - **`payment_pending`** — the draft becomes a real order (`active=false`) and `orderPlacedAt` is set.
-- **`paid`** — stock is validated one final time, reserved stock is permanently deducted from tracked variants, reservations are released, and promotion usage counts increment.
+- **`paid`** — stock is validated one final time, then promotion usage bumps and stock decrements for tracked variants run as a single `atomic()` batch, and reservations are released.
 - **`cancelled`** — stock is restored if the order was already `paid`/`shipped`, and any reservations are released.
 
 ## Order Lines
@@ -70,13 +70,17 @@ order.lines = [
     unitPrice: 2999,
     lineTotal: 5998,
     taxCode: "standard",
-    taxRate: 2400,   // basis points, 4 decimals (0.24)
-    taxAmount: 1160,
-    unitPriceNet: 2419,
-    lineTotalNet: 4838
+    taxRate: 2550,   // basis points, 4 decimals (0.255)
+    taxAmount: 1218,
+    unitPriceNet: 2390,
+    lineTotalNet: 4780
   }
 ];
 ```
+
+## Totals
+
+Totals math (subtotal, discount split, shipping, tax, net) is the pure `calculateOrderTotals` in `src/lib/server/services/order-utils.ts`, fed by `recalculateTotals` with the current lines, applied promotions, and shipping price. Free-shipping promotion rows are kept in sync with the shipping price on every recalculation.
 
 ## Order Code
 

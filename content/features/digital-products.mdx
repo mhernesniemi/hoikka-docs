@@ -2,26 +2,29 @@
 
 Hoikka supports both physical and digital products. The product `type` field (`physical` or `digital`) determines checkout behavior.
 
-## How It Works
-
 - **Physical products** require a shipping address and go through the shipping provider flow.
-- **Digital products** skip shipping entirely. After payment, they trigger email delivery with download links or access instructions.
+- **Digital products** skip shipping entirely. After payment, delivery emails are sent with the product content.
 
-## Changing the Default Product Type
+## Enabling Digital Products
 
-The default type for new products is set in `src/lib/config/products.ts`:
+Out of the box the store sells only physical products. Product types are configured in `src/lib/config/products.ts`:
 
-```typescript
+```typescript filename="src/lib/config/products.ts"
+export const PRODUCT_TYPES: ProductType[] = ["physical"];
 export const DEFAULT_PRODUCT_TYPE: ProductType = "physical";
-export const PRODUCT_TYPES: ProductType[] = ["physical", "digital"];
 ```
 
-- Change `DEFAULT_PRODUCT_TYPE` to `"digital"` if the store primarily sells digital products.
-- The `PRODUCT_TYPES` array controls which types are available. If it contains two or more types, a **Product Type** selector is shown in the admin product page. If only one type is listed, the selector is hidden and all products use that type.
+- `PRODUCT_TYPES` controls which types are available. With a single entry, the type selector is hidden and all products use that type. Add `"digital"` to enable digital products:
+
+  ```typescript
+  export const PRODUCT_TYPES: ProductType[] = ["physical", "digital"];
+  ```
+
+- `DEFAULT_PRODUCT_TYPE` is the type for newly created products. Set it to `"digital"` if the store primarily sells digital products. It must be one of `PRODUCT_TYPES`.
 
 ## Setting a Single Product as Digital
 
-When both product types are configured in `PRODUCT_TYPES`, a **Product Type** selector appears in the admin product page sidebar. Use it to switch any product between physical and digital.
+When `PRODUCT_TYPES` has two or more entries, a **Product Type** card appears in the admin product page sidebar. Use it to switch any product between physical and digital.
 
 You can also update the type programmatically:
 
@@ -33,8 +36,12 @@ await productService.update(123, { type: "digital" });
 
 When all items in a cart are digital:
 
-1. The shipping step is skipped
-2. No shipping address is collected
-3. After successful payment, the order transitions to `Delivered`
+1. The shipping step is skipped and no shipping address is collected (a contact email is still required)
+2. Stock validation is skipped
+3. After successful payment, the order transitions to `paid` and delivery emails are sent
 
-When a cart contains a mix of physical and digital products, the standard shipping flow applies for the physical items.
+When a cart contains a mix of physical and digital products, the standard shipping flow applies; the digital items are still delivered by email.
+
+## Delivery Emails
+
+`digitalDeliveryService.deliverOrder(orderId)` (`src/lib/server/services/digitalDelivery.ts`) sends one email per digital product via Resend. It requires `RESEND_API_KEY` (and optionally `RESEND_FROM_EMAIL`); without them, delivery is skipped. A delivery failure never fails the order.

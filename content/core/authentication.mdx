@@ -120,7 +120,7 @@ await authClient.emailOtp.resetPassword({ email, otp, password });
 
 ### Storefront account routes
 
-`/account/*` is protected by a layout guard (`src/routes/(storefront)/account/+layout.server.ts`) — requires a logged-in user with a verified email and a customer record, otherwise redirects to `/sign-in`.
+`/account/*` is protected by a layout guard (`src/routes/(storefront)/account/+layout.server.ts`) — requires a logged-in user with a verified email and a customer record. Users with an unverified email are redirected to `/verify-email`; everyone else missing a requirement goes to `/sign-in`.
 
 ### Admin routes
 

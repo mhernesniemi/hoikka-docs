@@ -28,8 +28,11 @@ The wishlist works identically for guests and logged-in customers — it is the 
 
 ```typescript filename="src/lib/remote/wishlist.remote.ts"
 export const getWishlistCount = query(/* ... */);    // → number (for the header badge)
+export const isProductWishlisted = query(schema, /* ... */); // productId → boolean
 export const toggleWishlist = command(schema, /* ... */); // { productId } → { added: boolean }
 ```
+
+`isProductWishlisted` is queried client-side so cached storefront pages stay identical for every visitor (the cookie never touches SSR).
 
 `toggleWishlist` rewrites the cookie and single-flight refreshes `getWishlistCount` in the same roundtrip.
 

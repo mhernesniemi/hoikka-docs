@@ -10,8 +10,8 @@ Languages are configured in `src/lib/config/languages.ts`:
 ```typescript
 import {
   DEFAULT_LANGUAGE,       // "en"
-  LANGUAGES,              // [{ code: "en", name: "English" }, { code: "fi", name: "Suomi" }]
-  TRANSLATION_LANGUAGES,  // [{ code: "fi", name: "Suomi" }] — excludes default
+  LANGUAGES,              // [{ code: "en", name: "English" }, { code: "fi", name: "Finnish" }]
+  TRANSLATION_LANGUAGES,  // [{ code: "fi", name: "Finnish" }] — excludes default
   translationsToMap       // Utility for components
 } from "$lib/config/languages";
 ```
@@ -70,12 +70,13 @@ const rows = await translationService.getProductTranslations(productId);
 | `collections`      | `collection_translations`      | `name`, `slug`, `description` |
 | `categories`       | `category_translations`        | `name`                        |
 | `content_pages`    | `content_page_translations`    | `title`, `slug`, `body`       |
+| `assets`           | `asset_translations`           | `alt`                         |
 
 Each translation table has a unique index on `(entity_id, language_code)`. The `TranslationService` uses Drizzle's `onConflictDoUpdate` for upserts.
 
 ## TranslationService
 
-A single service (`src/lib/server/services/translations.ts`) handles all 7 entities with a consistent API:
+A single service (`src/lib/server/services/translations.ts`) handles all 8 entities with a consistent API:
 
 ```typescript
 import { translationService } from "$lib/server/services/translations";
@@ -101,6 +102,10 @@ await translationService.upsertCategoryTranslation(categoryId, "fi", { name });
 
 await translationService.getContentPageTranslations(pageId);
 await translationService.upsertContentPageTranslation(pageId, "fi", { title, slug, body });
+
+await translationService.getAssetTranslations(assetId);
+await translationService.getAllAssetTranslations(assetIds); // Bulk: given assets
+await translationService.upsertAssetTranslation(assetId, "fi", { alt });
 ```
 
 ## Admin UI
@@ -109,13 +114,13 @@ Translations are saved as part of the main entity form — there is no separate 
 
 Translation field inputs use the naming convention `{fieldName}_{langCode}` (e.g. `name_fi`, `slug_fi`, `description_fi`).
 
-### Inline Language Tabs
-
-Products, collections, and content pages render language tabs directly in the main form card. Each tab shows the translatable fields for that language, using a `hidden` class to keep all fields mounted (important for rich text editors).
-
 ### TranslationEditor Component
 
-For simpler entities (variants, facets), a shared `TranslationEditor` component (`src/lib/components/admin/TranslationEditor.svelte`) renders a separate "Translations" card. It uses the HTML `form` attribute to associate its inputs with the main form.
+Products, variants, facets, collections, and assets use a shared `TranslationEditor` component (`src/lib/components/admin/TranslationEditor.svelte`) that renders a separate "Translations" card with language tabs. Inactive tabs use a `hidden` class to keep all fields mounted (important for rich text editors), and the component uses the HTML `form` attribute to associate its inputs with the main form.
+
+### Inline Language Tabs
+
+Content pages render language tabs directly in the main form card instead, with the same hidden-tab mounting.
 
 ### Inline Translation Editing
 

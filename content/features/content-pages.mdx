@@ -16,4 +16,4 @@ await contentPageService.create({
 });
 ```
 
-The `body` field stores rich text HTML from the Tiptap editor in the admin panel.
+The `body` field stores rich text HTML from the Tiptap editor in the admin panel. It is sanitized on save (default language and translations) with `src/lib/server/sanitize.ts`.

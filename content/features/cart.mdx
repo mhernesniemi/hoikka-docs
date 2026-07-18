@@ -44,11 +44,11 @@ export const setCartQuantity = command(schema, /* ... */); // quantity 0 removes
 export const removeCartLine = command(schema, /* ... */);  // { variantId }
 ```
 
-`addToCart` and `setCartQuantity` check available stock against reservations; `addToCart` errors when it would exceed stock, while `setCartQuantity` silently clamps to what is purchasable.
+`addToCart` and `setCartQuantity` check available stock against reservations; `addToCart` errors when it would exceed stock, while `setCartQuantity` silently clamps to what is purchasable. When a checkout draft is active, removing a line (or emptying the cart) releases that draft's stock reservations immediately instead of waiting for the 15-minute expiry.
 
 ## UI
 
-`src/lib/components/storefront/CartSheet.svelte` renders `getCart().current`. The `cartStore` in `src/lib/stores/cart.svelte.ts` is now only sheet open/close state — the cart data itself comes from the remote query.
+`src/lib/components/storefront/CartSheet.svelte` renders `getCart().current`. Mutations go through `src/lib/cart-actions.ts`, which applies an optimistic override (`src/lib/cart-optimistic.ts`) so the line updates in the same frame as the click; the command's single-flight refresh then replaces it with the server-computed cart, and errors roll the override back. Optimistic math is structural only (lines, quantities, line totals); cart-level money (subtotal, discount, VAT, total) waits for the server. The `cartStore` in `src/lib/stores/cart.svelte.ts` holds sheet open/close state plus an in-flight counter (`isBusy`); the cart data itself comes from the remote query.
 
 ## Checkout
 

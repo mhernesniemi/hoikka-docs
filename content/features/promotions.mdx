@@ -23,6 +23,10 @@ Promotions can apply to:
 - **Specific products** — linked via `promotion_products`
 - **Specific collections** — linked via `promotion_collections`
 
+Collection targeting resolves products through the collection service
+(`promotionService.getQualifyingProductIds`), so every collection filter type is
+honored: product, facet, price, stock, visibility, and variant.
+
 ## Discount Calculation
 
 Two discount types:
@@ -54,10 +58,14 @@ const promos = await promotionService.listActiveAutomatic();
 const discounts = await promotionService.getActiveProductDiscounts();
 ```
 
-All discount amounts — for coupon codes, automatic promotions, and totals
-recalculation — are computed by a single private method,
-`OrderService.computePromotionDiscount`, so the math is defined in exactly one
-place and behaves identically across every entry point.
+The discount formula lives in exactly one place: `calculateDiscount` in
+`src/lib/promotion-utils.ts` (percentage rounds, fixed amount is clamped to the
+base amount), re-exported by `src/lib/server/services/promotion-utils.ts`. It is
+shared by storefront price display and order math, so the shown discount can
+never drift from the charged one. On the order side,
+`OrderService.computePromotionDiscount` applies it per promotion type (order
+subtotal, qualifying product lines, or the shipping price) for coupon codes,
+automatic promotions, and totals recalculation alike.
 
 `getActiveProductDiscounts()` runs on every storefront page load, so its result is
 cached briefly (per server process / Workers isolate, ~60s TTL). Admin mutations

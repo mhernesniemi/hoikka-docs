@@ -6,7 +6,7 @@ Hoikka is configured entirely through environment variables, read via `$env/dyna
 
 ## Deployment target
 
-A single variable decides how the app is built and where the database and storage come from. It is read in both `svelte.config.js` (adapter) and `vite.config.ts` (module aliases).
+A single variable decides how the app is built and where the database and storage come from. It is resolved by `hoikka-target.js` at the repo root (environment first, then `.env`) and shared by `svelte.config.js` (adapter) and `vite.config.ts` (module aliases).
 
 ```bash filename=".env"
 # "node" (default) or "cloudflare"
@@ -85,6 +85,8 @@ DEMO_MODE=
 # Absolute site URL for the sitemap (falls back to the request origin).
 PUBLIC_SITE_URL=
 ```
+
+Integration variables (`TASKS_SECRET`, `ORDER_WEBHOOK_URL`, `ORDER_WEBHOOK_SECRET`, `WEBHOOK_SECRET_<PROVIDER>`) are covered in [Integrations](/integrations/overview).
 
 <Callout type="info">
 On Cloudflare, secrets are set with `wrangler secret put <NAME>` rather than an `.env` file.

@@ -7,12 +7,15 @@ Hoikka uses a provider pattern for payments and shipping, making it easy to add 
 
 ### Interface
 
+Defined in `src/lib/server/services/payments/types.ts`:
+
 ```typescript
 interface PaymentProvider {
-	code: string;
-	createPayment(order: Order): Promise<PaymentInfo>;
-	confirmPayment(transactionId: string): Promise<PaymentStatus>;
-	refundPayment?(transactionId: string, amount: number): Promise<RefundInfo>;
+	code: string; // unique code like 'stripe', 'paypal'
+
+	createPayment: (order: OrderWithRelations) => Promise<PaymentInfo>;
+	confirmPayment?: (paymentId: string) => Promise<PaymentStatus>;
+	refundPayment?: (paymentId: string, amount?: number) => Promise<RefundInfo>;
 }
 ```
 
@@ -22,7 +25,7 @@ interface PaymentProvider {
 export class KlarnaProvider implements PaymentProvider {
 	code = "klarna";
 
-	async createPayment(order: Order): Promise<PaymentInfo> {
+	async createPayment(order: OrderWithRelations): Promise<PaymentInfo> {
 		// Create Klarna payment session
 		const session = await klarnaClient.createSession({
 			amount: order.total,
@@ -31,14 +34,13 @@ export class KlarnaProvider implements PaymentProvider {
 		});
 
 		return {
-			transactionId: session.id,
-			redirectUrl: session.redirect_url,
-			status: "pending"
+			providerTransactionId: session.id,
+			redirectUrl: session.redirect_url
 		};
 	}
 
-	async confirmPayment(transactionId: string): Promise<PaymentStatus> {
-		const payment = await klarnaClient.getPayment(transactionId);
+	async confirmPayment(paymentId: string): Promise<PaymentStatus> {
+		const payment = await klarnaClient.getPayment(paymentId);
 		return payment.status === "CAPTURED" ? "settled" : "pending";
 	}
 }
@@ -51,6 +53,8 @@ import { KlarnaProvider } from "./providers/klarna";
 
 PROVIDERS.set("klarna", new KlarnaProvider());
 ```
+
+Then add a matching row to the `payment_methods` table (the built-in methods are seeded by `drizzle/0002_seed_defaults.sql`).
 
 ### Enabling Stripe
 
@@ -66,18 +70,21 @@ PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_test_..."
 
 Stripe is already registered in the provider map and seeded in the database. Once the env vars are set, customers will see a card form powered by Stripe Elements at checkout.
 
-Without Stripe keys, the mock payment provider is used instead. Mock payments complete the order immediately without a separate confirmation step.
+Without Stripe keys, use the built-in mock payment method instead; Stripe payments fail when `STRIPE_SECRET_KEY` is unset. Mock payments complete the order immediately without a separate confirmation step.
 
 ## Shipping Providers
 
 ### Interface
 
+Defined in `src/lib/server/services/shipping/types.ts`:
+
 ```typescript
 interface ShippingProvider {
-	code: string;
-	getRates(order: Order): Promise<ShippingRate[]>;
-	createShipment(order: Order): Promise<ShipmentInfo>;
-	trackShipment?(trackingNumber: string): Promise<ShipmentStatus>;
+	code: string; // unique code like 'flat_rate'
+
+	getRates: (order: OrderWithRelations) => Promise<ShippingRate[]>;
+	createShipment: (order: OrderWithRelations) => Promise<ShipmentInfo>;
+	trackShipment?: (trackingNumber: string) => Promise<ShipmentStatus>;
 }
 ```
 
@@ -87,18 +94,18 @@ interface ShippingProvider {
 export class DhlProvider implements ShippingProvider {
 	code = "dhl";
 
-	async getRates(order: Order): Promise<ShippingRate[]> {
+	async getRates(order: OrderWithRelations): Promise<ShippingRate[]> {
 		const rates = await dhlClient.getRates({
 			from: WAREHOUSE_ADDRESS,
-			to: order.shippingAddress,
+			to: order.shippingCity,
 			weight: calculateWeight(order)
 		});
 
 		return rates.map((rate) => ({
 			id: rate.serviceCode,
 			name: rate.serviceName,
-			price: rate.totalPrice,
-			estimatedDays: rate.transitDays
+			price: rate.totalPrice, // in cents
+			estimatedDeliveryDays: rate.transitDays
 		}));
 	}
 
@@ -114,7 +121,7 @@ import { DhlProvider } from "./providers/dhl";
 PROVIDERS.set("dhl", new DhlProvider());
 ```
 
-Then add a matching row to the `shipping_methods` table (or add it to `initializeDefaultMethods()`).
+Then add a matching row to the `shipping_methods` table (the built-in `flat_rate` method is seeded by `drizzle/0002_seed_defaults.sql`).
 
 ## Built-in Providers
 

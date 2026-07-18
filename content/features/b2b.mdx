@@ -46,12 +46,12 @@ await productService.setGroupPrice(variantId, groupId, 1999); // 19.99 EUR
 // Remove a group price
 await productService.removeGroupPrice(variantId, groupId);
 
-// Resolve effective price for a customer
-const price = await productService.resolveEffectivePrice(
-	variant.price, variantId, customerId
-);
-// Returns min(basePrice, ...applicable group prices)
+// Resolve group prices for a customer, in bulk
+const groupPrices = await productService.resolveGroupPrices(variantIds, customerId);
+// Map<variantId, lowest applicable group price>; no entry if none apply
 ```
+
+In the cart, the unit price is `min(basePrice, lowest group price)`.
 
 ### How Pricing Resolves
 
@@ -68,8 +68,8 @@ If the customer has no groups or no group prices apply, the base price is used.
 On product detail pages, group prices are resolved and stamped onto variants so the frontend displays the correct price:
 
 ```typescript
-// In +page.server.ts — resolves group pricing for logged-in customers
-await stampGroupPrices([product, ...relatedProducts], locals.customer?.id ?? null);
+// In product-page.ts (and listing page loads): resolves group pricing for logged-in customers
+await stampGroupPrices([product, ...relatedProducts], customerId);
 ```
 
 Each variant exposes `effectivePrice` which the storefront uses for display.
@@ -143,8 +143,8 @@ Promotions can be restricted to a specific customer group:
 // A promotion that only applies to wholesale customers
 {
   code: "WHOLESALE10",
-  type: "percentage",
-  value: 10,
+  discountType: "percentage",
+  discountValue: 10,
   customerGroupId: wholesaleGroupId
 }
 ```

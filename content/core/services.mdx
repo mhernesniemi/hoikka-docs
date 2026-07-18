@@ -3,7 +3,7 @@
 
 All business logic lives in `src/lib/server/services/`. Each service is a singleton class.
 
-Services import `db` from the database seam (`src/lib/server/db/index.ts`) rather than opening a connection themselves. The seam resolves to a local better-sqlite3 database on the Node.js target and to the D1 binding on Cloudflare, so the same service code runs on both targets. See [Database](/core/database).
+Services import `db` from the database seam (`src/lib/server/db/index.ts`) rather than opening a connection themselves. The seam resolves to a local better-sqlite3 database on the Node.js target and to the D1 binding on Cloudflare, so the same service code runs on both targets. Multi-statement writes go through the seam's `atomic()` helper. See [Database](/core/database).
 
 ## Product Service
 
@@ -19,7 +19,7 @@ const product = await productService.getBySlug("blue-shirt");
 product.name; // "Blue Shirt" (default language, directly from products table)
 
 // List with pagination
-const { items, total } = await productService.list({
+const { items, pagination } = await productService.list({
 	limit: 20
 });
 
@@ -71,16 +71,16 @@ const order = await orderService.getByCode("ORD-EJXEDYIX");
 ```typescript
 import { customerService } from "$lib/server/services/customers";
 
-// Create from auth user
-const customer = await customerService.getOrCreateFromAuth(authUser);
-
 // Query
+const customer = await customerService.getById(1);
 const customer = await customerService.getByEmail("user@example.com");
 ```
 
+The customer record for a signed-in user is created by the customer sync in `src/hooks.server.ts`, not by a service method. See [Authentication](/core/authentication#customer-sync).
+
 ## Translation Service
 
-Manages translations for all 7 translatable entities. Uses Drizzle's `onConflictDoUpdate` for upserts.
+Manages translations for all 8 translatable entities. Uses Drizzle's `onConflictDoUpdate` for upserts.
 
 ```typescript
 import { translationService } from "$lib/server/services/translations";
@@ -101,6 +101,19 @@ const facetValueTranslations = await translationService.getAllFacetValueTranslat
 ```
 
 See [Localization](/core/localization) for the full API and admin UI integration.
+
+## Pagination helpers
+
+Paginated list methods share two helpers from `src/lib/server/pagination.ts`
+instead of repeating the sort/paging boilerplate per service:
+
+- `resolveSort(sortColumnMap, sortBy, sortOrder, fallback?)` resolves a
+  whitelisted `sortBy` key into a directional `orderBy` expression
+- `paginationOf(total, limit, offset, itemsLength)` builds the `pagination`
+  block of a `PaginatedResult`
+
+`parsePaginationParams(url)` reads `page`, `search`, `sort`, and `order` from
+the query string for admin list pages.
 
 ## Other Services
 
@@ -132,10 +145,13 @@ than a class.
 
 ### Promotion math
 
-All promotion discount math is centralized in
-`OrderService.computePromotionDiscount` — coupon codes, automatic promotions, and
-totals recalculation all route through it, so the applied discount is computed the
-same way everywhere. See [Promotions](/features/promotions).
+The discount formula lives in a single function, `calculateDiscount`
+(`$lib/promotion-utils.ts`, re-exported for services via
+`services/promotion-utils.ts`). It is shared by storefront price display and
+server-side order math, so the shown discount can't drift from the charged one.
+Per-order application (coupon codes, automatic promotions, totals recalculation)
+routes through the private `OrderService.computePromotionDiscount`. See
+[Promotions](/features/promotions).
 
 ## Emitting events
 

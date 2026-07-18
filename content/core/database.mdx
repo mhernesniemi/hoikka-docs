@@ -17,6 +17,21 @@ src/lib/server/db/
 
 `index.ts` exports a `db` Proxy. On node it's a `better-sqlite3` singleton created by `node.ts` — WAL mode, foreign keys on — which applies migrations from `drizzle/` on first use. On Cloudflare it's a Drizzle client over the D1 binding (`platform.env.DB`), cached per request. The default node database file is `./data/hoikka.db`, overridable with `DATABASE_URL`.
 
+The shared `Db` type deliberately excludes `transaction`: it would type-check on better-sqlite3, but D1 has no interactive transactions, so it would blow up in production. Use `atomic()` instead.
+
+## Atomic writes
+
+`atomic()` (also in `index.ts`) runs several write statements atomically on both targets: D1 executes `batch()` as one implicit transaction; better-sqlite3 wraps the statements in `BEGIN`/`COMMIT`. Pass unexecuted Drizzle statements (don't await them yourself).
+
+```typescript
+import { db, atomic } from "$lib/server/db";
+
+await atomic([
+	db.update(orders).set({ state: "cancelled" }).where(eq(orders.id, orderId)),
+	db.update(productVariants).set({ stock: sql`stock + 1` }).where(eq(productVariants.id, variantId))
+]);
+```
+
 ## Core tables
 
 ### Products
@@ -90,7 +105,7 @@ Product search uses SQLite **FTS5**. The virtual table `product_search_fts` is c
 
 ## Migrations
 
-Migrations live in `drizzle/` and are generated from the schema. On the node target they apply automatically at server start; on Cloudflare apply them explicitly with Wrangler.
+Migrations live in `drizzle/` and are generated from the schema. On the node target they apply automatically on first database use; on Cloudflare apply them explicitly with Wrangler.
 
 ```bash
 # Generate from schema changes

@@ -1,16 +1,20 @@
 # Introduction
 
-**Hoikka** is a lightweight, full-stack e-commerce platform built with SvelteKit.
+**Hoikka** is a full-stack e-commerce platform built with SvelteKit.
 
-It bundles the storefront, admin panel, and business logic in a single codebase, stores everything in **SQLite**, and runs on either a **Node.js** server or **Cloudflare Workers** (D1 + R2) — you pick with one env var, `HOIKKA_TARGET`.
+It bundles the storefront, admin panel, and business logic in a single codebase, stores everything in **SQLite**, and runs on either a **Node.js** server or **Cloudflare Workers** (D1 + R2). You pick with one env var, `HOIKKA_TARGET`.
 
-## Philosophy: Code Over Configuration
+There are no plugin systems, configuration DSLs, or hidden admin logic. Everything is plain TypeScript that you read, change, and extend directly, in the spirit of the [Rails Doctrine](https://rubyonrails.org/doctrine). This also makes the codebase easy for AI tools to work with: a local [MCP server](/core/services#mcp-server) (`pnpm mcp`) exposes schema, catalog, and order tools to AI assistants.
 
-Hoikka follows the principles of the [Rails Doctrine](https://rubyonrails.org/doctrine), favoring clarity, strong defaults, and real application code over abstraction layers.
+## Quick Start
 
-There are no plugin systems, configuration DSLs, or hidden admin logic. Everything is plain TypeScript that you can read, change, and extend directly.
+Scaffold a new store:
 
-This also makes Hoikka well-suited for AI-assisted development: the codebase is structured so that both humans and AI agents can reason about it easily. A local [MCP server](/core/services#mcp-server) (`pnpm mcp`) exposes schema, catalog, and order tools to AI assistants.
+```bash
+pnpx create-hoikka-app my-store
+```
+
+Then follow the [installation instructions](/getting-started/installation).
 
 ## What's Included
 
@@ -26,13 +30,3 @@ This also makes Hoikka well-suited for AI-assisted development: the codebase is 
 - **B2B** — customer groups with per-group variant pricing
 - **Reviews**, **content pages**, **digital products**, and **asset management**
 - **Integrations** — a dependency-free outbox for webhooks, ERP/PIM sync, and background jobs that works on both targets
-
-## Quick Start
-
-Scaffold a new store:
-
-```bash
-pnpx create-hoikka-app my-store
-```
-
-Then follow the [installation instructions](/getting-started/installation).

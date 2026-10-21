@@ -23,6 +23,7 @@ Configuration highlights:
 - **Google OAuth** is enabled only when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set.
 - **Email OTP** plugin for verification / password reset. In dev the OTP is logged to the console (`[auth] OTP for ...`) — wire Resend/SMTP for production.
 - A `role` field on the user (`customer` default, or `staff` / `admin`).
+- A `lastSignInAt` timestamp on the user, set whenever a session is created (any sign-in method). Admin → Customers shows it; sessions themselves are pruned when they expire, so count adoption from this column.
 - The `sveltekitCookies` plugin forwards session cookies from server-side `auth.api` calls into the SvelteKit response.
 
 ### First-time admin setup

@@ -41,3 +41,4 @@ wrangler.cron.jsonc        # Config for the cron worker
 - **`src/lib/remote/*.remote.ts`** — SvelteKit experimental [remote functions](/core/architecture#remote-functions). Enabled via `kit.experimental.remoteFunctions` and `compilerOptions.experimental.async`.
 - **`src/lib/server/db/`** — the database seam. `index.ts` exposes a lazy `db` Proxy backed by `better-sqlite3` on node (`node.ts`) or D1 on Cloudflare. `node-stub.ts` keeps `better-sqlite3` out of the Workers bundle.
 - **`src/lib/server/storage/`** — the asset seam mirrors the db seam: local filesystem (`fs.ts`) on node, R2 (`r2.ts`) on Cloudflare, served through `routes/uploads/[...path]/`.
+- **`src/lib/admin-nav.ts`** — the admin sidebar. Reorder, remove or add sections there; `/admin` opens the first one. A removed section is only hidden: its pages still exist.

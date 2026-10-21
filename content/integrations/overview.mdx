@@ -32,6 +32,22 @@ await emitEvent("order.paid", { code, total, customerEmail });
 // options: emitEvent(type, payload, { delayMs, maxAttempts })
 ```
 
+### In the same batch as your writes
+
+To make "the data changed" and "the event exists" inseparable, put the event insert in the same `atomic()` batch as the write it belongs to. `eventRow` builds the outbox row; `runAtomic` takes an explicit db, so the same code also runs from CLI scripts (`createNodeDb`) outside a request:
+
+```typescript
+import { atomic } from "$lib/server/db";
+import { outbox, products } from "$lib/server/db/schema";
+import { eventRow } from "$lib/server/integrations/event-row";
+
+await atomic([
+	db.update(products).set({ name }).where(eq(products.id, id)),
+	db.insert(outbox).values(eventRow("product.renamed", { id, name }))
+]);
+// outside a request: runAtomic(ownDb, [...]) from $lib/server/db/run-atomic
+```
+
 ## Handling events
 
 Register a handler per type in `src/lib/server/integrations/handlers.ts` — plain functions in a map, like the payment/shipping provider registries. A handler that throws is retried with backoff (up to `maxAttempts`, default 5):

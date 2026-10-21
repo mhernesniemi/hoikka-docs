@@ -61,7 +61,7 @@ if (result?.user) {
 
 ### Customer sync
 
-When a non-admin user is present, a `customers` record is created (or found) and set on `locals.customer`. The `authUserId` column links it to the Better Auth `user.id`; the name is split into `firstName` / `lastName`. Admin and staff users do not get a customer record.
+When a non-admin user is present, a `customers` record is created (or found) and set on `locals.customer`. The `authUserId` column links it to the Better Auth `user.id`; the name is split into `firstName` / `lastName`. A customer created ahead of the login (an import, an ERP sync) is claimed by email instead, once the user's email is verified. Admin and staff users do not get a customer record.
 
 ### Locals
 
@@ -115,6 +115,19 @@ await authClient.emailOtp.verifyEmail({ email, otp });
 await authClient.emailOtp.sendVerificationOtp({ email, type: "forget-password" });
 await authClient.emailOtp.resetPassword({ email, otp, password });
 ```
+
+## Closed stores and portals
+
+Two `customers` options in `hoikka.config.ts` turn the storefront into a closed B2B store or a customer portal:
+
+```typescript filename="hoikka.config.ts"
+customers: { signUp: false, requireSignIn: true }
+```
+
+- `signUp: false` — no self-service accounts: the sign-up API returns 404 and Google or email-code sign-in won't create users. Existing accounts still sign in.
+- `requireSignIn: true` — anonymous visitors are sent to `/sign-in?redirect=…` (form actions get a 401). The sign-in, password reset and privacy pages, `/admin`, `/api/auth`, webhooks and the tasks endpoint stay reachable, and guest edge caching is off.
+
+Customers usually come from outside (an import or an ERP sync), so they have no login yet. **Forgot password doubles as "set your password"**: asking for a code for the email of a customer without a login creates their user, the emailed code proves they own the address, and their first sign-in lands on their existing customer record.
 
 ## Route protection
 

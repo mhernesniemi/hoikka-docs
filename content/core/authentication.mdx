@@ -128,11 +128,19 @@ customers: { signUp: false, requireSignIn: true }
 - `signUp: false` — no self-service accounts: the sign-up API returns 404 and Google or email-code sign-in won't create users. Existing accounts still sign in.
 - `requireSignIn: true` — anonymous visitors are sent to `/sign-in?redirect=…` (form actions get a 401). The sign-in, password reset and privacy pages, `/admin`, `/api/auth`, webhooks and the tasks endpoint stay reachable, and guest edge caching is off.
 
-Data the store keeps per customer, like an ERP customer number or a credit limit, goes in `customers.fields`. They are [custom fields](/integrations/erp-sync#5-protect-what-the-erp-owns) like those on products: editable in **Admin → Customers** (unless `readOnly`), and shown read-only on the storefront account page:
+Data the store keeps per customer, like an ERP customer number or a credit limit, goes in `customers.fields`. They are [custom fields](/integrations/erp-sync#5-protect-what-the-erp-owns) like those on products, editable in **Admin → Customers** unless `readOnly`. Each field's `storefront` decides what the customer sees on their account page:
+
+- `"hidden"` (default) — admin only, e.g. a credit limit or an internal note.
+- `"read"` — listed under **Account details**.
+- `"edit"` — an input in the profile form (not for `readOnly`, `image` or `richtext` fields).
 
 ```typescript filename="hoikka.config.ts"
 customers: {
-	fields: [{ key: "erpNumber", label: "ERP customer number", type: "text", readOnly: true }]
+	fields: [
+		{ key: "erpNumber", label: "ERP number", type: "text", readOnly: true, storefront: "read" },
+		{ key: "creditLimit", label: "Credit limit", type: "number", readOnly: true },
+		{ key: "contactPerson", label: "Contact person", type: "text", storefront: "edit" }
+	]
 }
 ```
 

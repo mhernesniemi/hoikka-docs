@@ -129,6 +129,28 @@ customers: { signUp: false, requireSignIn: true }
 
 Customers usually come from outside (an import or an ERP sync), so they have no login yet. **Forgot password doubles as "set your password"**: asking for a code for the email of a customer without a login creates their user, the emailed code proves they own the address, and their first sign-in lands on their existing customer record.
 
+## Staff single sign-on
+
+Staff can sign in to the admin through an identity provider instead of a password: Microsoft Entra ID, Okta, Keycloak, Google Workspace or any OpenID Connect provider. Customers are not affected.
+
+```typescript filename="hoikka.config.ts"
+import { entraId } from "./src/lib/config-schema/providers.js";
+
+admin: {
+	sso: {
+		providers: [entraId({ tenantId: "<tenant id>" })],
+		roles: { claim: "roles", map: { "Shop.Admin": "admin", "Shop.Staff": "staff" } }
+	}
+}
+```
+
+- **Providers:** `entraId({ tenantId })`, `okta({ issuer })`, `keycloak({ issuer })`, `googleWorkspace({ domain })`, or `oidc({ id, label, issuer })` for anything else. Each is on once `SSO_<ID>_CLIENT_ID` and `SSO_<ID>_CLIENT_SECRET` are set (`SSO_ENTRA_*`, `SSO_GOOGLE_WORKSPACE_*`, …). Register the redirect URI `<BETTER_AUTH_URL>/api/auth/oauth2/callback/<id>` at the provider.
+- **Roles** come from one ID-token claim, mapped to `admin` or `staff`; the highest match wins and no match refuses the sign-in. Entra: app roles in `roles`. Okta: `groups` (add a groups claim to the ID token). Keycloak: `realm_access.roles`. Google Workspace has no roles claim: map the domain, `{ claim: "hd", map: { "example.com": "staff" } }`.
+- **Checked on every sign-in:** the audience, the provider's required claims (Entra's tenant, Google's domain) and the role. A role removed at the provider is refused at the next sign-in; existing sessions last until they expire.
+- **Passwords:** with SSO on, staff can't sign in with a password and `/admin/setup` is closed: the first admin is the first person who signs in with the admin role. `passwordLogin: true` keeps passwords next to SSO; `ADMIN_PASSWORD_LOGIN=true` reopens them without a deploy, e.g. while the provider is down.
+
+Without a tenant yet, `pnpm oidc:mock` runs a local provider that signs one person in straight away. Point the app at it with `SSO_<ID>_DISCOVERY_URL=http://localhost:8180/.well-known/openid-configuration`; the script header lists the claims you can set.
+
 ## Route protection
 
 ### Storefront account routes

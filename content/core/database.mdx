@@ -12,6 +12,7 @@ src/lib/server/db/
 ├── node.ts        # better-sqlite3 singleton (node); migrates on first use
 ├── node-stub.ts   # aliased in on the cloudflare build
 ├── config.ts      # DATABASE_URL resolution (default ./data/hoikka.db)
+├── columns.ts     # column helpers: pk, now, updatedNow, ts, bool
 └── schema.ts      # table definitions (sqliteTable)
 ```
 
@@ -30,6 +31,22 @@ await atomic([
 	db.update(orders).set({ state: "cancelled" }).where(eq(orders.id, orderId)),
 	db.update(productVariants).set({ stock: sql`stock + 1` }).where(eq(productVariants.id, variantId))
 ]);
+```
+
+## Your own tables
+
+Add project tables to `schema.ts` and run `pnpm db:generate`. The column helpers keep them consistent with the core tables:
+
+```typescript filename="src/lib/server/db/schema.ts"
+import { pk, now, updatedNow, bool } from "./columns.js";
+
+export const portalContacts = sqliteTable("portal_contacts", {
+	id: pk(),
+	customerId: integer("customer_id").notNull().references(() => customers.id),
+	isPrimary: bool("is_primary").notNull().default(false),
+	createdAt: now(),
+	updatedAt: updatedNow()
+});
 ```
 
 ## Core tables

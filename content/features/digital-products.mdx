@@ -1,36 +1,36 @@
 # Digital Products
 
-Hoikka supports both physical and digital products. The product `type` field (`physical` or `digital`) determines checkout behavior.
+Hoikka supports both physical and digital products. Each product has a type from `productTypes` in `hoikka.config.ts`, and the type's `fulfillment` (`physical` or `digital`) determines checkout behavior.
 
 - **Physical products** require a shipping address and go through the shipping provider flow.
 - **Digital products** skip shipping entirely. After payment, delivery emails are sent with the product content.
 
 ## Enabling Digital Products
 
-Out of the box the store sells only physical products. Product types are configured in `src/lib/config/products.ts`:
+Out of the box the store sells only physical products. Add a type with digital fulfillment:
 
-```typescript filename="src/lib/config/products.ts"
-export const PRODUCT_TYPES: ProductType[] = ["physical"];
-export const DEFAULT_PRODUCT_TYPE: ProductType = "physical";
+```typescript filename="hoikka.config.ts"
+productTypes: {
+	physical: { label: "Physical", fields: [] },
+	digital: { label: "Digital", fields: [] }
+}
 ```
 
-- `PRODUCT_TYPES` controls which types are available. With a single entry, the type selector is hidden and all products use that type. Add `"digital"` to enable digital products:
-
-  ```typescript
-  export const PRODUCT_TYPES: ProductType[] = ["physical", "digital"];
-  ```
-
-- `DEFAULT_PRODUCT_TYPE` is the type for newly created products. Set it to `"digital"` if the store primarily sells digital products. It must be one of `PRODUCT_TYPES`.
+- A type keyed `digital` is delivered as a download; any other key ships unless it sets `fulfillment: "digital"`. Keys are yours to name, e.g. `stockItem: { label: "Stock item", fields: [] }` or `ebook: { label: "E-book", fields: [], fulfillment: "digital" }`.
+- With a single type, the type selector is hidden and all products use that type.
+- `defaultProductType` is the type for newly created products (default: the first one).
 
 ## Setting a Single Product as Digital
 
-When `PRODUCT_TYPES` has two or more entries, a **Product Type** card appears in the admin product page sidebar. Use it to switch any product between physical and digital.
+With two or more types, a **Product Type** card appears in the admin product page sidebar. Use it to switch a product between types; a type with digital fulfillment shows the **Digital File** card.
 
 You can also update the type programmatically:
 
 ```typescript
 await productService.update(123, { type: "digital" });
 ```
+
+An order line pins how it was sold at payment, so changing a type's fulfillment later never changes an order that is already paid.
 
 ## Checkout Behavior
 

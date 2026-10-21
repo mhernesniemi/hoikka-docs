@@ -81,7 +81,7 @@ Mark the custom fields the sync writes as `readOnly`. The admin shows them but c
 
 ## 6. Customers and logins
 
-Sync ERP contacts into `customers` without a login. With `customers: { signUp: false, requireSignIn: true }` the store is closed, and a contact's first "forgot password" creates their login (see [Closed stores and portals](/core/authentication#closed-stores-and-portals)). Contacts removed from the ERP should be soft-deleted (`deletedAt`) on the next sync.
+Sync ERP contacts into `customers` without a login, with their ERP data in read-only `customers.fields`. With `customers: { signUp: false, requireSignIn: true }` the store is closed, and a contact's first "forgot password" creates their login (see [Closed stores and portals](/core/authentication#closed-stores-and-portals)). Contacts removed from the ERP should be soft-deleted (`deletedAt`) on the next sync.
 
 <Callout type="info">
 	Prefer the **Node target** for ERP projects: syncs can run for minutes, and ERPs often need a custom CA certificate or IP allowlisting, which a fixed server handles and Workers don't.

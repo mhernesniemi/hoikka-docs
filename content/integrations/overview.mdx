@@ -68,7 +68,7 @@ The built-in example forwards `order.paid` to `ORDER_WEBHOOK_URL` (HMAC-signed w
 
 The drain function is identical on both targets; the trigger is one line each.
 
-**Node** — a background interval starts once per server process (`ensureNodeScheduler`, wired from `hooks.server.ts`). Nothing to configure.
+**Node** — a one-minute background interval starts once per server process (`ensureNodeScheduler`, wired from `hooks.server.ts`). Nothing to configure.
 
 **Cloudflare** — the SvelteKit worker only handles `fetch`, so a companion cron worker drives the drain. Deploy it once:
 
@@ -76,7 +76,7 @@ The drain function is identical on both targets; the trigger is one line each.
 wrangler deploy --config wrangler.cron.jsonc
 ```
 
-It fires on a Cron Trigger and POSTs `/api/tasks/run` on your store. Set `STORE_URL` and `TASKS_SECRET` on it (the latter matching the store's).
+It fires every minute and POSTs `/api/tasks/run` on your store, which drains the outbox and runs due [scheduled tasks](#scheduled-tasks). Set `STORE_URL` and `TASKS_SECRET` on it (the latter matching the store's).
 
 **Anywhere** — you can also drain manually or from any external scheduler:
 
@@ -86,6 +86,30 @@ curl -X POST https://your-store/api/tasks/run -H "authorization: Bearer $TASKS_S
 
 <Callout type="warning">
 	Set `TASKS_SECRET` in production — `/api/tasks/run` is open only when it's unset (dev convenience).
+</Callout>
+
+## Scheduled tasks
+
+Recurring work, like pulling an ERP every 15 minutes, is a registered task. The same tick that drains the outbox runs the tasks that are due, so a task needs no timer or cron entry of its own:
+
+```typescript filename="src/lib/server/integrations/tasks.ts"
+registerTask("erp-sync", {
+	label: "ERP sync",
+	everyMinutes: 15,
+	async run() {
+		const changed = await syncFromErp();
+		return { changed }; // shown in the admin
+	}
+});
+```
+
+- **One run at a time.** Every run is a row in `task_runs`, and a unique index allows one running row per task. A tick or a "Run now" click during a run is skipped, not run twice.
+- **Crashes release the lock.** A run still marked running after `timeoutMinutes` (default 30) is marked failed, and the next tick starts a fresh one.
+- **Admin → Tasks** lists every task with its last run, last success and recent run history, has a **Run now** button, and flags a task as **Stale** when its last success is older than `staleAfterMinutes` (default 3 × `everyMinutes`).
+- Built-in: `housekeeping` (hourly) prunes old outbox rows, abandoned checkout drafts, expired download grants, spent rate-limit counters and run history older than 30 days.
+
+<Callout type="info">
+	Each run is awaited inside the tick. On Cloudflare that is the cron worker's request, so keep a run within a few minutes. For long ERP pulls (or an ERP that needs a custom CA or IP allowlisting), prefer the Node target.
 </Callout>
 
 ## Inbound webhooks

@@ -61,7 +61,7 @@ Batch large syncs (a few hundred statements per batch) so a long pull never bloc
 
 ## 4. Run it as a scheduled task
 
-```typescript filename="src/lib/server/integrations/tasks.ts"
+```typescript filename="src/lib/server/integrations/project.ts"
 registerTask("erp-sync", {
 	label: "ERP sync",
 	everyMinutes: 15,

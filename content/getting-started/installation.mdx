@@ -59,17 +59,22 @@ Copy `.env.example` to `.env` and set at least `BETTER_AUTH_SECRET`. See [Config
 
 `pnpm build` produces a plain Node server in `build/`; start it with `pnpm start` (`node build`). The same build runs in a container, for example with Kamal on a VPS:
 
-- **Database** — keep `DATABASE_URL` on a mounted volume (e.g. `/data/hoikka.db`). Migrations from `MIGRATIONS_DIR` (default `./drizzle`, so copy that folder into the image) apply on startup.
+- **Database** — keep `DATABASE_URL` on a mounted volume (e.g. `/data/hoikka.db`). Migrations from `MIGRATIONS_DIR` (default `./drizzle`, so copy that folder into the image) apply on startup. Once the database exists, set `DATABASE_MUST_EXIST=1` so a wrong path fails startup instead of creating an empty store (see below).
 - **Uploads** — either on the same volume (`UPLOADS_DIR`) or in an S3-compatible bucket (`S3_BUCKET` and friends, see [Configuration](/getting-started/configuration#s3-compatible-storage-node-target)). Move the resized-image cache with `CACHE_DIR` to keep it out of backups.
 - **Health check** — `GET /api/health` returns `200 {"ok":true}` when the database answers with the schema in place, `503` otherwise. It is public, uncached, and skips auth, so point the proxy or deploy tool's healthcheck at it.
 - **Origin** — behind a TLS-terminating proxy (kamal-proxy, Caddy, nginx) set `ORIGIN=https://your-store.example`, or adapter-node sees `http://` and rejects form posts as cross-site.
 - **Body size** — set `BODY_SIZE_LIMIT=209715200` so 200 MB digital deliverables can be uploaded (see `.env.example`).
 - **Background work** — the outbox and scheduled tasks run on an in-process interval, started by the first request (the health check counts). Overlapping containers during a rolling deploy are safe: each outbox event and each task run is claimed in the database before it runs, so nothing runs twice.
 
+**First deploy with `DATABASE_MUST_EXIST`.** The flag only stops the database file from being created. The schema still migrates on boot, so the file just has to exist once:
+
+1. Deploy once without `DATABASE_MUST_EXIST`; the first boot creates and migrates the database. Or create it with a one-off command on the volume, e.g. `touch /data/hoikka.db` (an empty file is a valid empty SQLite database).
+2. Set `DATABASE_MUST_EXIST=1` and redeploy. From then on, a missing file at `DATABASE_URL` stops startup with an error naming the path, and the health check never goes green.
+
 ```bash
 docker run -p 3000:3000 \
   -v hoikka-data:/data \
-  -e DATABASE_URL=/data/hoikka.db -e UPLOADS_DIR=/data/uploads -e CACHE_DIR=/data/cache \
+  -e DATABASE_URL=/data/hoikka.db -e DATABASE_MUST_EXIST=1 -e UPLOADS_DIR=/data/uploads -e CACHE_DIR=/data/cache \
   -e ORIGIN=https://store.example.com -e BETTER_AUTH_SECRET=... -e BODY_SIZE_LIMIT=209715200 \
   my-store
 ```

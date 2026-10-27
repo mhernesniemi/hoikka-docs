@@ -49,6 +49,13 @@ DATABASE_URL="./data/hoikka.db"
 
 Only used on the node target. The Cloudflare target ignores it and uses the D1 binding (`platform.env.DB`).
 
+```bash filename=".env"
+# Refuse to start when the DATABASE_URL file is missing
+DATABASE_MUST_EXIST=1
+```
+
+Without it, a missing file is created and migrated, which is what you want on a first run and in development. In production that also means a mistyped path starts an empty store that `/api/health` reports as healthy. With the flag set, startup fails with an error naming the path instead. See the [first deploy](/getting-started/installation#nodejs-and-containers) flow.
+
 ### Paths (node target)
 
 ```bash filename=".env"

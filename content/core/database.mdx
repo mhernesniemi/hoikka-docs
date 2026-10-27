@@ -122,11 +122,14 @@ Product search uses SQLite **FTS5**. The virtual table `product_search_fts` is c
 
 ## Migrations
 
-Migrations live in `drizzle/` and are generated from the schema. On the node target they apply automatically on first database use; on Cloudflare apply them explicitly with Wrangler.
+Migrations live in `drizzle/` and are generated from the schema. On the node target they apply automatically on first database use (from `MIGRATIONS_DIR`, default `drizzle`); on Cloudflare apply them explicitly with Wrangler.
 
 ```bash
 # Generate from schema changes
 pnpm db:generate
+
+# Fail (exit 1) if the schema has changes without a migration — runs in CI
+pnpm db:check
 
 # Apply to remote D1 (cloudflare target)
 pnpm db:migrate:cf
@@ -138,6 +141,8 @@ pnpm db:studio
 <Callout type="warning">
 Never use `drizzle-kit push`. Always generate a migration file.
 </Callout>
+
+On the node target, foreign keys are switched off while migrations run, so a table rebuild (drizzle-kit's create / copy / drop / rename for column changes) doesn't cascade-delete child rows. A `PRAGMA foreign_key_check` afterwards stops startup if a migration left dangling references.
 
 ## Querying
 

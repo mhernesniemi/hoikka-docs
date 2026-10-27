@@ -57,5 +57,5 @@ Two GitHub Actions workflows run on pull requests to `main`. Both use `pnpm` and
 
 | Workflow | File | Purpose |
 |----------|------|---------|
-| **CI** | `.github/workflows/ci.yml` | Lint (`pnpm lint`) + type check (`pnpm check`), unit tests (`pnpm test`), and a build matrix over **both** targets (`node` and `cloudflare`) |
+| **CI** | `.github/workflows/ci.yml` | Lint (`pnpm lint`) + type check (`pnpm check`) + missing-migration check (`pnpm db:check`), unit tests (`pnpm test`), and a build matrix over **both** targets (`node` and `cloudflare`) |
 | **E2E Tests** | `.github/workflows/e2e.yml` | Seeds a throwaway SQLite database, then runs Playwright |

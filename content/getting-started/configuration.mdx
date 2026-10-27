@@ -15,7 +15,7 @@ HOIKKA_TARGET=node
 
 | Target | Adapter | Database | Storage |
 | --- | --- | --- | --- |
-| `node` | `@sveltejs/adapter-node` | `better-sqlite3` file | local filesystem |
+| `node` | `@sveltejs/adapter-node` | `better-sqlite3` file | local filesystem, or an S3-compatible bucket |
 | `cloudflare` | `@sveltejs/adapter-cloudflare` | D1 binding | R2 binding |
 
 Switching targets is just flipping this value (and rebuilding). Run the Cloudflare target locally with `pnpm dev:cf`.
@@ -48,6 +48,29 @@ DATABASE_URL="./data/hoikka.db"
 ```
 
 Only used on the node target. The Cloudflare target ignores it and uses the D1 binding (`platform.env.DB`).
+
+### Paths (node target)
+
+```bash filename=".env"
+UPLOADS_DIR="./data/uploads"          # uploaded files (fs storage)
+CACHE_DIR="./data/uploads/.cache"     # resized images; defaults to <UPLOADS_DIR>/.cache
+MIGRATIONS_DIR="./drizzle"            # migrations applied on startup
+```
+
+All optional. The resized-image cache is regenerable, so pointing `CACHE_DIR` outside the uploads keeps it out of backups. `MIGRATIONS_DIR` lets a built image ship the `drizzle/` folder anywhere.
+
+### S3-compatible storage (node target)
+
+```bash filename=".env"
+S3_BUCKET=
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_ENDPOINT="https://s3.example.com"  # unset for AWS S3; set = path-style URLs
+S3_REGION=us-east-1                   # default
+S3_PREFIX=                            # optional key prefix, e.g. "my-store"
+```
+
+Setting `S3_BUCKET` moves uploads from `UPLOADS_DIR` to any S3-compatible bucket (AWS S3, UpCloud Object Storage, Hetzner, MinIO). See [Assets](/features/assets#s3-compatible-storage).
 
 ### OAuth (Google)
 

@@ -6,7 +6,7 @@ Hoikka stores uploaded images behind a **storage seam** and serves them through 
 
 ## Storage Seam
 
-`src/lib/server/storage/{index,fs,r2}.ts` mirror the db seam: when the R2 binding (`ASSETS_BUCKET`) is present on the request (Cloudflare target) it is used; otherwise files go to the local filesystem under `data/uploads` (node target).
+`src/lib/server/storage/{index,fs,s3,r2}.ts` mirror the db seam: when the R2 binding (`ASSETS_BUCKET`) is present on the request (Cloudflare target) it is used; otherwise files go to an S3-compatible bucket when `S3_BUCKET` is set, or to the local filesystem under `UPLOADS_DIR` (default `data/uploads`) on the node target.
 
 ```typescript filename="src/lib/server/storage/index.ts"
 export const upload = /* → { url } */;
@@ -15,11 +15,20 @@ export const remove = /* ... */;
 export const get    = /* → { body, contentType, size } | null */;
 ```
 
+### S3-compatible storage
+
+On the node target, set `S3_BUCKET`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` to keep uploads in any S3-compatible bucket: AWS S3, UpCloud Object Storage, Hetzner, MinIO. For anything but AWS also set `S3_ENDPOINT` (which switches to path-style URLs) and usually `S3_REGION` (default `us-east-1`). `S3_PREFIX` puts every key under a prefix, so several stores can share a bucket.
+
+- Keys mirror the filesystem layout (`<prefix>/<folder>/<file>`), so moving existing uploads is a plain copy of `data/uploads` (minus `.cache`) into the bucket.
+- Files are still served through `/uploads/...` and digital deliverables through `/downloads/<token>`, so the bucket can stay **private**. The credentials need read, write, delete and list access to the bucket.
+- Large uploads (digital deliverables up to 200 MB) stream to the bucket as multipart uploads in 8 MB parts, so a file is never held in memory whole.
+- Resized images are still cached on local disk (`CACHE_DIR`); the original is fetched from the bucket only on a cache miss.
+
 ## Serving & Resizing
 
 `/uploads/[...path]` serves the file from the active backend and resizes it on demand via `?w=<width>&q=<quality>`:
 
-- **Node target** — `sharp` with a disk cache (`src/lib/server/images/node.ts`).
+- **Node target** — `sharp` with a disk cache under `CACHE_DIR` (`src/lib/server/images/node.ts`). The original is read through the storage backend, only on a cache miss; deleting an asset drops its cached sizes.
 - **Cloudflare target** — the Cloudflare Images binding (`IMAGES`), falling back to the original when the binding isn't configured, plus edge caching of transformed variants.
 
 ```
@@ -66,7 +75,7 @@ Uploads go through `POST /api/assets/upload` (`src/routes/api/assets/upload/+ser
 ```
 1. Admin ImagePicker selects one or more files
 2. Client POSTs each file to /api/assets/upload
-3. Server writes it to the active backend (fs or R2)
+3. Server writes it to the active backend (fs, S3 or R2)
 4. Server returns { url, name, width, height, size }
 5. Client submits all files' metadata to the page's form action
    in one request (saveImages in src/lib/admin-upload.ts), which

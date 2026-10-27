@@ -8,7 +8,7 @@ Hoikka follows a service-oriented architecture adapted for SvelteKit's patterns.
 The platform-specific pieces are hidden behind two "seams" so the rest of the app never branches on the target:
 
 - **Database** (`src/lib/server/db/index.ts`) — `db` is a lazy `Proxy`. On node it resolves to a `better-sqlite3` singleton (`node.ts`, migrates on first use). On Cloudflare it resolves to a Drizzle client over the D1 binding (`platform.env.DB`), cached per request on `event.locals`. Multi-statement writes go through the `atomic()` helper: `batch()` on D1, `BEGIN`/`COMMIT` on better-sqlite3. See [Database](/core/database#atomic-writes).
-- **Storage** (`src/lib/server/storage/index.ts`) — mirrors the db seam. When the R2 binding is present the request uses R2; otherwise files go to the local filesystem. Public URLs are `/uploads/...` on both.
+- **Storage** (`src/lib/server/storage/index.ts`) — mirrors the db seam. When the R2 binding is present the request uses R2; otherwise files go to an S3-compatible bucket (when `S3_BUCKET` is set) or the local filesystem. Public URLs are `/uploads/...` on all of them.
 
 `svelte.config.js` picks the adapter (`adapter-node` vs `adapter-cloudflare`) and `vite.config.ts` aliases node-only modules (`better-sqlite3`, `node:fs` storage, `sharp` images) to stubs on the Cloudflare build so they never enter the Workers bundle.
 

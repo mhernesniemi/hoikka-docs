@@ -72,7 +72,7 @@ The built-in example forwards `order.paid` to `ORDER_WEBHOOK_URL` (HMAC-signed w
 
 The drain function is identical on both targets; the trigger is one line each.
 
-**Node** — a one-minute background interval starts once per server process (`ensureNodeScheduler`, wired from `hooks.server.ts`). Nothing to configure.
+**Node** — a one-minute background interval starts once per server process (`ensureNodeScheduler`, wired from `hooks.server.ts`) on its first request, which a `/api/health` check also counts as. Nothing to configure, and safe with overlapping instances (e.g. old and new containers during a deploy): events and task runs are claimed in the database before they run.
 
 **Cloudflare** — the SvelteKit worker only handles `fetch`, so a companion cron worker drives the drain. Deploy it once:
 

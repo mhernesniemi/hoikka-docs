@@ -161,7 +161,7 @@ admin: {
 }
 ```
 
-- **Providers:** `entraId({ tenantId })`, `okta({ issuer })`, `keycloak({ issuer })`, `googleWorkspace({ domain })`, or `oidc({ id, label, issuer })` for anything else. Each is on once `SSO_<ID>_CLIENT_ID` and `SSO_<ID>_CLIENT_SECRET` are set (`SSO_ENTRA_*`, `SSO_GOOGLE_WORKSPACE_*`, …). Register the redirect URI `<BETTER_AUTH_URL>/api/auth/oauth2/callback/<id>` at the provider.
+- **Providers:** `entraId({ tenantId })`, `okta({ issuer })`, `keycloak({ issuer })`, `googleWorkspace({ domain })`, or `oidc({ id, label, issuer })` for anything else. Each is on once `SSO_<ID>_CLIENT_ID` and `SSO_<ID>_CLIENT_SECRET` are set (`SSO_ENTRA_*`, `SSO_GOOGLE_WORKSPACE_*`, …). Register the redirect URI `<BETTER_AUTH_URL>/api/auth/callback/<id>` at the provider.
 - **Roles** come from one ID-token claim, mapped to `admin` or `staff`; the highest match wins and no match refuses the sign-in. Entra: app roles in `roles`. Okta: `groups` (add a groups claim to the ID token). Keycloak: `realm_access.roles`. Google Workspace has no roles claim: map the domain, `{ claim: "hd", map: { "example.com": "staff" } }`.
 - **Checked on every sign-in:** the audience, the provider's required claims (Entra's tenant, Google's domain) and the role. A role removed at the provider is refused at the next sign-in; existing sessions last until they expire.
 - **Passwords:** with SSO on, staff can't sign in with a password and `/admin/setup` is closed: the first admin is the first person who signs in with the admin role. `passwordLogin: true` keeps passwords next to SSO; `ADMIN_PASSWORD_LOGIN=true` reopens them without a deploy, e.g. while the provider is down.

@@ -142,7 +142,7 @@ pnpm db:studio
 Never use `drizzle-kit push`. Always generate a migration file.
 </Callout>
 
-On the node target, foreign keys are switched off while migrations run, so a table rebuild (drizzle-kit's create / copy / drop / rename for column changes) doesn't cascade-delete child rows. A `PRAGMA foreign_key_check` afterwards stops startup if a migration left dangling references.
+On the node target, foreign keys are switched off while migrations run, so a table rebuild (drizzle-kit's create / copy / drop / rename for column changes) doesn't cascade-delete child rows. When a boot applies migrations, a `PRAGMA foreign_key_check` afterwards stops startup if they left dangling references; boots with nothing to apply skip it.
 
 ## Querying
 

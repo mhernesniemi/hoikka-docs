@@ -16,9 +16,9 @@ Four core pieces do the generic work; only the source's shapes and your own tabl
 | Piece | Does |
 | --- | --- |
 | `createApiClient` | OAuth2 tokens, timeouts, retries and paging for the source's API |
-| `productService.upsertProductsBySku` | Keeps products the source owns in sync, one variant per SKU |
+| `upsertProductsBySku` | Keeps products the source owns in sync, one variant per SKU |
 | `mirrorRecords` | Mirrors any other records into your tables, with change events |
-| `registerTask` | Runs the sync on a schedule, and alerts when it fails or goes stale |
+| `registerTask` | Runs the sync on a schedule, and reports when it starts failing |
 
 ## 1. The source
 
@@ -68,7 +68,7 @@ export function erpSource(env: Record<string, string | undefined>): ErpSource {
 `createApiClient` handles the transport:
 
 - **Tokens.** The client-credentials token is cached until shortly before it expires. On a `401`, the client fetches a fresh token and retries once.
-- **Retries.** Each attempt times out after `timeoutMs` (default 30 s). Network errors, timeouts and `5xx` are retried with backoff (`retries`, default 2), but only for idempotent methods, since a `POST` that timed out may have gone through. A `4xx` is never retried.
+- **Retries.** Each attempt times out after `timeoutMs` (default 30 s). Network errors, timeouts and `5xx` are retried with backoff (`retries`, default 2), but only for idempotent methods, since a `POST` that timed out may have gone through. A `429` is retried for any method after its `Retry-After`, unless that's over a minute. Other `4xx` responses are never retried.
 - **Paging.** `api.collection()` pages an OData-style `{ value: [...] }` collection with `$top`/`$skip`. Past `maxItems` (default 100 000), it throws rather than return a partial pull, because a partial pull would hide everything it missed.
 - **Other calls.** `api.json()` and `api.request()` cover single resources and writes back to the source. Both throw an `ApiError` (with `status` and `body`) on any non-2xx response.
 
@@ -101,12 +101,12 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { erpOrderLines, erpOrders } from "../db/schema.js";
 import { mirrorRecords } from "../integrations/mirror.js";
-import { productService } from "../services/products.js";
+import { upsertProductsBySku } from "../services/external-products.js";
 import type { ErpSource } from "./source.js";
 
 export async function syncParts(source: ErpSource) {
 	const parts = await source.parts();
-	return productService.upsertProductsBySku(
+	return upsertProductsBySku(
 		parts.map((part) => ({
 			sku: part.PartNo,
 			name: part.Description,
@@ -192,12 +192,10 @@ export async function syncOrders(db: Db, source: ErpSource) {
 						}
 					]
 				: [],
-		removed: (rows) =>
-			rows
-				.filter((row) => !row.deletedAt)
-				.map((row) =>
-					db.update(erpOrders).set({ deletedAt: new Date() }).where(eq(erpOrders.id, row.id))
-				)
+		removed: (row) =>
+			row.deletedAt
+				? []
+				: [db.update(erpOrders).set({ deletedAt: new Date() }).where(eq(erpOrders.id, row.id))]
 	});
 }
 ```
@@ -206,10 +204,14 @@ export async function syncOrders(db: Db, source: ErpSource) {
 - **New records** are inserted first with an empty hash (plus the `initial` values your `NOT NULL` columns need), so `write` gets their id for child rows. A new record fires no events, and neither does a first write that never finished: the empty hash marks it as new.
 - **Changed records** are written in one [atomic batch](/integrations/overview#in-the-same-batch-as-your-writes): the rows from `write`, the events from `changes` (given the row as the store last showed it), and the new hash. A crash leaves the old row and hash, so the record is retried on the next run with its notifications, never a recorded change whose notifications were lost.
 - **One bad record doesn't stop the rest.** A record whose batch fails is skipped. After the others are written, the sync throws an error naming it, so the run is marked failed and alerted.
-- **Missing records** go to `removed`, which returns the writes that retire them. Usually that's a soft delete, since old documents may still point at them. Leave `removed` out unless the pull is complete.
+- **Missing records** go to `removed` one row at a time. It returns the writes that retire the row, usually a soft delete since old documents may still point at it, or `[]` for a row already retired. Leave `removed` out unless the pull is complete.
 - **Summary.** It returns `{ total, changed, created, events, removed }`.
 
 Keep `src/lib/server/erp/` on relative imports and pass the db in, so a seed script can run the same sync through plain `tsx` with `createNodeDb`. Run `pnpm db:generate` after adding the tables.
+
+<Callout type="warning">
+	**First import on Cloudflare.** Each new record costs an insert and a batch, each a round trip to D1, so a first import of thousands of records won't fit in one cron run. Run it on the Node target, or import a D1 export made locally. Later runs only write what changed.
+</Callout>
 
 ## 4. Schedule it
 
@@ -243,7 +245,7 @@ registerTask("erp-sync", {
 
 - **One run at a time.** Runs never overlap, and a crashed run releases its lock.
 - **Run now.** The admin shows the run history and has a **Run now** button.
-- **Alerts.** The task alerts once when it starts failing or goes stale: to Sentry when `SENTRY_DSN` is set, otherwise to the error log. Set `onFailure` on the task to send alerts somewhere else.
+- **Failure reports.** When the task starts failing, it is reported once, not on every failed run: to the error log, and to Sentry when `SENTRY_DSN` is set. Set `onFailure` on the task to report somewhere else.
 
 ## 5. React to changes
 

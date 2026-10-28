@@ -94,7 +94,7 @@ curl -X POST https://your-store/api/tasks/run -H "authorization: Bearer $TASKS_S
 
 ## Scheduled tasks
 
-Recurring work, like pulling an ERP every 15 minutes, is a registered task. The same tick that drains the outbox runs the tasks that are due, so a task needs no timer or cron entry of its own:
+Recurring work, like [pulling an ERP every 15 minutes](/integrations/mirroring), is a registered task. The same tick that drains the outbox runs the tasks that are due, so a task needs no timer or cron entry of its own:
 
 ```typescript filename="src/lib/server/integrations/project.ts"
 import { registerTask } from "./tasks.js";
@@ -112,6 +112,7 @@ registerTask("erp-sync", {
 - **One run at a time.** Every run is a row in `task_runs`, and a unique index allows one running row per task. A tick or a "Run now" click during a run is skipped, not run twice.
 - **Crashes release the lock.** A run still marked running after `timeoutMinutes` (default 30) is marked failed, and the next tick starts a fresh one.
 - **Admin → Tasks** lists every task with its last run, last success and recent run history, has a **Run now** button, and flags a task as **Stale** when its last success is older than `staleAfterMinutes` (default 3 × `everyMinutes`).
+- **Failure alerts.** A task that starts failing, or goes stale (for example because a run hangs), is reported once per streak, not on every tick. The report goes to Sentry when `SENTRY_DSN` is set, and to the error log otherwise. Set `onFailure(alert)` on the task to send it elsewhere; `reportTaskAlert(alert)` is the default, to call from your own.
 - Built-in: `housekeeping` (hourly) prunes old outbox rows, abandoned checkout drafts, expired download grants, spent rate-limit counters and run history older than 30 days.
 
 <Callout type="info">

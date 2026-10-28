@@ -1,0 +1,276 @@
+import { Callout } from 'nextra/components'
+
+# Mirroring an external system
+
+Many B2B shops and customer portals are a mirror of an ERP or PIM with a storefront on top: products, stock, customers and orders live in the external system, and the store shows them. Hoikka pulls the system on a schedule into SQLite, so pages read only local data and keep working when the source is slow or down.
+
+```
+ERP ──► source ──► registerTask (every 15 min) ──► upsertProductsBySku ──► products
+                                                └─► mirrorRecords ───────► your tables
+                                                          │
+                                                          └─► outbox ──► registerHandler ──► email, webhooks
+```
+
+Four core pieces do the generic work; only the source's shapes and your own tables are project code:
+
+| Piece | Does |
+| --- | --- |
+| `createApiClient` | OAuth2 tokens, timeouts, retries and paging for the source's API |
+| `productService.upsertProductsBySku` | Keeps products the source owns in sync, one variant per SKU |
+| `mirrorRecords` | Mirrors any other records into your tables, with change events |
+| `registerTask` | Runs the sync on a schedule, and alerts when it fails or goes stale |
+
+## 1. The source
+
+One module is the only code that knows where data comes from. Its types are the source's shapes; nothing else in the store depends on them:
+
+```typescript filename="src/lib/server/erp/source.ts"
+import { createApiClient } from "../api-client.js";
+
+export interface ErpPart {
+	PartNo: string;
+	Description: string;
+	Active: boolean;
+	QtyOnHand: number;
+	Grade: string;
+}
+
+export interface ErpOrder {
+	OrderNo: string;
+	CustomerNo: string;
+	ContactEmail: string | null;
+	Status: string;
+	DeliveryDate: string | null;
+	Lines: { PartNo: string; Qty: number }[];
+}
+
+export interface ErpSource {
+	parts(): Promise<ErpPart[]>;
+	orders(): Promise<ErpOrder[]>;
+}
+
+export function erpSource(env: Record<string, string | undefined>): ErpSource {
+	const api = createApiClient({
+		baseUrl: env.ERP_URL!,
+		oauth: {
+			tokenUrl: env.ERP_TOKEN_URL!,
+			clientId: env.ERP_CLIENT_ID!,
+			clientSecret: env.ERP_CLIENT_SECRET!
+		}
+	});
+	return {
+		parts: () => api.collection<ErpPart>("Parts"),
+		orders: () => api.collection<ErpOrder>("Orders?$expand=Lines")
+	};
+}
+```
+
+`createApiClient` handles the transport:
+
+- **Tokens.** The client-credentials token is cached until shortly before it expires. On a `401`, the client fetches a fresh token and retries once.
+- **Retries.** Each attempt times out after `timeoutMs` (default 30 s). Network errors, timeouts and `5xx` are retried with backoff (`retries`, default 2), but only for idempotent methods, since a `POST` that timed out may have gone through. A `4xx` is never retried.
+- **Paging.** `api.collection()` pages an OData-style `{ value: [...] }` collection with `$top`/`$skip`. Past `maxItems` (default 100 000), it throws rather than return a partial pull, because a partial pull would hide everything it missed.
+- **Other calls.** `api.json()` and `api.request()` cover single resources and writes back to the source. Both throw an `ApiError` (with `status` and `body`) on any non-2xx response.
+
+Implement `ErpSource` a second time with fixtures, so development, tests and demos don't need the ERP.
+
+<Callout type="info">
+	**Private CA.** Many ERPs serve a certificate from an internal CA. On the Node target, start the process with `NODE_EXTRA_CA_CERTS=/path/to/ca.pem`. Node reads it once at startup, so it goes in the container or service environment, not `.env`. The Cloudflare target can't trust a custom CA: the API needs a publicly trusted certificate there.
+</Callout>
+
+## 2. Parts become products
+
+Declare a product type for the source's items, with the fields the source owns marked `readOnly`:
+
+```typescript filename="hoikka.config.ts"
+productTypes: {
+	part: {
+		label: "Part",
+		fields: [
+			{ key: "grade", label: "Material grade", type: "text", readOnly: true, help: "From the ERP" },
+			{ key: "notes", label: "Notes", type: "textarea" }
+		]
+	}
+}
+```
+
+Then hand the source's rows to `upsertProductsBySku`. It creates and updates the products and their variants, so the sync never writes `products` or `productVariants` itself:
+
+```typescript filename="src/lib/server/erp/sync.ts"
+import { eq } from "drizzle-orm";
+import type { Db } from "../db/index.js";
+import { erpOrderLines, erpOrders } from "../db/schema.js";
+import { mirrorRecords } from "../integrations/mirror.js";
+import { productService } from "../services/products.js";
+import type { ErpSource } from "./source.js";
+
+export async function syncParts(source: ErpSource) {
+	const parts = await source.parts();
+	return productService.upsertProductsBySku(
+		parts.map((part) => ({
+			sku: part.PartNo,
+			name: part.Description,
+			active: part.Active,
+			stock: part.QtyOnHand,
+			customFields: { grade: part.Grade }
+		})),
+		{ productType: "part", hideMissing: true }
+	);
+}
+```
+
+- **Ownership.** The source owns the name, stock, price (pass `price` in cents, or leave it out to keep prices in the admin), the active flag and the `readOnly` fields. Staff edit everything else, like the `notes` field, images and descriptions, and the next sync leaves it alone. A key that isn't a `readOnly` field of the type fails the sync before anything is written.
+- **Hidden, never deleted.** An inactive product becomes a draft. With `hideMissing` (only for a complete pull), so does a product of the type whose SKU the source no longer lists. Old order lines can still name it, and it shows again once the source does. A product staff made `private` stays private.
+- **Search.** Only products whose name, visibility or fields changed are reindexed. Stock and price reach the search index through triggers.
+- **Summary.** It returns `{ total, created, updated, hidden }`.
+
+## 3. Everything else goes to your tables
+
+Orders, shipments, companies and document metadata go to [your own tables](/core/database#your-own-tables). Give each a unique column for the external id, and a `sourceHash` text column:
+
+```typescript filename="src/lib/server/db/schema.ts"
+export const erpOrders = sqliteTable("erp_orders", {
+	id: pk(),
+	erpId: text("erp_id").notNull().unique(),
+	customerNo: text("customer_no").notNull(),
+	contactEmail: text("contact_email"),
+	status: text("status").notNull(),
+	deliveryDate: text("delivery_date"),
+	sourceHash: text("source_hash").default("").notNull(),
+	deletedAt: ts("deleted_at"),
+	updatedAt: updatedNow()
+});
+
+export const erpOrderLines = sqliteTable("erp_order_lines", {
+	id: pk(),
+	orderId: integer("order_id")
+		.references(() => erpOrders.id, { onDelete: "cascade" })
+		.notNull(),
+	sku: text("sku").notNull(),
+	quantity: integer("quantity").notNull()
+});
+```
+
+`mirrorRecords` writes them. You describe how one record becomes rows, and which changes are worth an event:
+
+```typescript filename="src/lib/server/erp/sync.ts"
+export async function syncOrders(db: Db, source: ErpSource) {
+	return mirrorRecords(db, {
+		records: await source.orders(),
+		key: (order) => order.OrderNo,
+		table: erpOrders,
+		keyColumn: erpOrders.erpId,
+		hashColumn: erpOrders.sourceHash,
+		initial: (order) => ({ customerNo: order.CustomerNo, status: order.Status }),
+		write: (order, id) => [
+			db
+				.update(erpOrders)
+				.set({
+					customerNo: order.CustomerNo,
+					contactEmail: order.ContactEmail,
+					status: order.Status,
+					deliveryDate: order.DeliveryDate,
+					deletedAt: null
+				})
+				.where(eq(erpOrders.id, id)),
+			db.delete(erpOrderLines).where(eq(erpOrderLines.orderId, id)),
+			...order.Lines.map((line) =>
+				db.insert(erpOrderLines).values({ orderId: id, sku: line.PartNo, quantity: line.Qty })
+			)
+		],
+		changes: (before, order) =>
+			before.deliveryDate !== order.DeliveryDate && order.ContactEmail
+				? [
+						{
+							type: "erp.order.delivery_date_changed",
+							payload: {
+								orderNo: order.OrderNo,
+								email: order.ContactEmail,
+								previous: before.deliveryDate,
+								next: order.DeliveryDate
+							}
+						}
+					]
+				: [],
+		removed: (rows) =>
+			rows
+				.filter((row) => !row.deletedAt)
+				.map((row) =>
+					db.update(erpOrders).set({ deletedAt: new Date() }).where(eq(erpOrders.id, row.id))
+				)
+	});
+}
+```
+
+- **Unchanged records are free.** One query loads the stored hashes; a record whose hash matches costs one comparison and no writes.
+- **New records** are inserted first with an empty hash (plus the `initial` values your `NOT NULL` columns need), so `write` gets their id for child rows. A new record fires no events, and neither does a first write that never finished: the empty hash marks it as new.
+- **Changed records** are written in one [atomic batch](/integrations/overview#in-the-same-batch-as-your-writes): the rows from `write`, the events from `changes` (given the row as the store last showed it), and the new hash. A crash leaves the old row and hash, so the record is retried on the next run with its notifications, never a recorded change whose notifications were lost.
+- **One bad record doesn't stop the rest.** A record whose batch fails is skipped. After the others are written, the sync throws an error naming it, so the run is marked failed and alerted.
+- **Missing records** go to `removed`, which returns the writes that retire them. Usually that's a soft delete, since old documents may still point at them. Leave `removed` out unless the pull is complete.
+- **Summary.** It returns `{ total, changed, created, events, removed }`.
+
+Keep `src/lib/server/erp/` on relative imports and pass the db in, so a seed script can run the same sync through plain `tsx` with `createNodeDb`. Run `pnpm db:generate` after adding the tables.
+
+## 4. Schedule it
+
+Register the sync as a [scheduled task](/integrations/overview#scheduled-tasks). Its return value is the run summary shown in **Admin → Tasks**:
+
+```typescript filename="src/lib/server/integrations/project.ts"
+import { env } from "$env/dynamic/private";
+import { db } from "../db/index.js";
+import { sendEmail } from "../email.js";
+import { erpSource } from "../erp/source.js";
+import { syncOrders, syncParts } from "../erp/sync.js";
+import { registerHandler } from "./handlers.js";
+import { registerTask } from "./tasks.js";
+
+registerTask("erp-sync", {
+	label: "ERP sync",
+	everyMinutes: 15,
+	async run() {
+		const source = erpSource(env);
+		const parts = await syncParts(source);
+		const orders = await syncOrders(db, source);
+		return {
+			partsChanged: parts.created + parts.updated,
+			partsHidden: parts.hidden,
+			ordersChanged: orders.created + orders.changed,
+			notifications: orders.events
+		};
+	}
+});
+```
+
+- **One run at a time.** Runs never overlap, and a crashed run releases its lock.
+- **Run now.** The admin shows the run history and has a **Run now** button.
+- **Alerts.** The task alerts once when it starts failing or goes stale: to Sentry when `SENTRY_DSN` is set, otherwise to the error log. Set `onFailure` on the task to send alerts somewhere else.
+
+## 5. React to changes
+
+Every event from `changes` is drained from the outbox by a handler. A handler that throws is retried with backoff:
+
+```typescript filename="src/lib/server/integrations/project.ts"
+interface DeliveryDateChanged {
+	orderNo: string;
+	email: string;
+	previous: string | null;
+	next: string | null;
+}
+
+registerHandler("erp.order.delivery_date_changed", async (payload) => {
+	const { orderNo, email, next } = payload as DeliveryDateChanged;
+	await sendEmail(
+		email,
+		`New delivery date for order ${orderNo}`,
+		`<p>Order ${orderNo} is now expected ${next ?? "at a date to be confirmed"}.</p>`
+	);
+});
+```
+
+## Customers and logins
+
+Sync ERP contacts into `customers` without a login. Put their ERP data in `readOnly` customer fields, so staff see it but can't overwrite it. With `customers: { signUp: false, requireSignIn: true }` the store is closed (see [Closed stores and portals](/core/authentication#closed-stores-and-portals)), and a contact's first "forgot password" creates their login. Soft-delete (`deletedAt`) contacts the ERP no longer lists.
+
+<Callout type="info">
+	Prefer the **Node target** for mirroring. A sync can run for minutes, and ERPs often need a private CA or IP allowlisting, which a fixed server handles and Workers don't. On Cloudflare, each run happens inside the cron worker's request, so keep it within a few minutes.
+</Callout>

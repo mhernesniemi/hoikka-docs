@@ -1,4 +1,4 @@
 export default {
 	overview: "Overview",
-	"erp-sync": "ERP sync recipe"
+	mirroring: "Mirroring an external system"
 };

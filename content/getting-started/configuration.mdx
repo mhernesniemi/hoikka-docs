@@ -116,7 +116,7 @@ DEMO_MODE=
 PUBLIC_SITE_URL=
 ```
 
-Integration variables (`TASKS_SECRET`, `ORDER_WEBHOOK_URL`, `ORDER_WEBHOOK_SECRET`, `WEBHOOK_SECRET_<PROVIDER>`) are covered in [Integrations](/integrations/overview).
+Integration variables (`TASKS_SECRET`, `SENTRY_DSN` for task failure alerts, `ORDER_WEBHOOK_URL`, `ORDER_WEBHOOK_SECRET`, `WEBHOOK_SECRET_<PROVIDER>`) are covered in [Integrations](/integrations/overview).
 
 <Callout type="info">
 On Cloudflare, secrets are set with `wrangler secret put <NAME>` rather than an `.env` file.

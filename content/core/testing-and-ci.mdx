@@ -13,11 +13,12 @@ pnpm test
 pnpm test:unit
 ```
 
-Most tests cover pure functions — price formatting, tax calculation, shipping rules, promotion logic, cart/wishlist cookies, order utilities. Some are **DB-backed integration tests** that run against a real migrated in-memory SQLite database: they mock `$env/dynamic/private` to point the db seam at `:memory:`, then `createNodeDb` runs the full `drizzle/` migration chain (FTS table, seed defaults, stock triggers) so assertions hit real SQL.
+Most tests cover pure functions — price formatting, tax calculation, shipping rules, promotion logic, cart/wishlist cookies, order utilities. Some are **DB-backed integration tests** that run against a real migrated in-memory SQLite database: `vitest.setup.ts` replaces `$app/env/private` with a test env that starts as `{ DATABASE_URL: ":memory:" }` in every test file, so the db seam never touches your dev database. `createNodeDb` then runs the full `drizzle/` migration chain (FTS table, seed defaults, stock triggers), so assertions hit real SQL. A test that needs another value sets it on `testEnv`:
 
 ```typescript
-vi.mock("$env/dynamic/private", () => ({ env: { DATABASE_URL: ":memory:" } }));
-import { db } from "../db/index.js";
+import { testEnv as env } from "#lib/server/test-env.js";
+
+env.SENTRY_DSN = "https://key@o1.ingest.sentry.io/1";
 ```
 
 ## End-to-end tests

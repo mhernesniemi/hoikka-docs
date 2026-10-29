@@ -27,7 +27,7 @@ Unknown tax codes fall back to the standard rate (0.255). Rates are stored in th
 Tax codes live on **categories**. A product's tax code is resolved from its first assigned category at cart/checkout time; products without a category use `standard`:
 
 ```typescript
-import { categoryService } from "$lib/server/services/categories.js";
+import { categoryService } from "#lib/server/services/categories.js";
 
 const taxCode = await categoryService.getProductTaxCode(productId); // e.g. "food"
 ```
@@ -37,7 +37,7 @@ const taxCode = await categoryService.getProductTaxCode(productId); // e.g. "foo
 Tax is back-calculated from the gross price:
 
 ```typescript
-import { taxService } from "$lib/server/services/tax.js";
+import { taxService } from "#lib/server/services/tax.js";
 
 // Calculate tax breakdown
 const result = taxService.calculateTax(2510, 0.255);
@@ -128,7 +128,7 @@ Net amount: 45.00 EUR (VAT 0%)
 ## Tax Service API
 
 ```typescript
-import { taxService } from "$lib/server/services/tax.js";
+import { taxService } from "#lib/server/services/tax.js";
 
 // Get rate for a tax code
 const rate = await taxService.getTaxRate("standard"); // 0.255

@@ -26,19 +26,20 @@ src/
 │   ├── api/               # API endpoints (auth, assets, tasks, webhooks)
 │   └── uploads/[...path]/ # Local/R2 image-serving route
 ├── hooks.server.ts        # Auth, customer sync, demo guard
+├── env.ts                 # Every environment variable the app reads
 scripts/                   # seed.ts, mcp.ts, tooling
 drizzle/                   # SQLite migrations (incl. raw-SQL FTS5)
 packages/
 └── create-hoikka-app/     # npm installer / scaffolder
 workers/cron.ts            # Companion cron worker (drains the outbox on Cloudflare)
-hoikka-target.js           # HOIKKA_TARGET resolution shared by svelte/vite configs
+vite.config.ts             # SvelteKit options, HOIKKA_TARGET adapter and stubs
 wrangler.jsonc             # Cloudflare Workers config (D1, R2, images)
 wrangler.cron.jsonc        # Config for the cron worker
 ```
 
 ## Notes
 
-- **`src/lib/remote/*.remote.ts`** — SvelteKit experimental [remote functions](/core/architecture#remote-functions). Enabled via `kit.experimental.remoteFunctions` and `compilerOptions.experimental.async`.
+- **`src/lib/remote/*.remote.ts`** — SvelteKit experimental [remote functions](/core/architecture#remote-functions). Enabled via `experimental.remoteFunctions` and `compilerOptions.experimental.async` in `vite.config.ts`.
 - **`src/lib/server/db/`** — the database seam. `index.ts` exposes a lazy `db` Proxy backed by `better-sqlite3` on node (`node.ts`) or D1 on Cloudflare. `node-stub.ts` keeps `better-sqlite3` out of the Workers bundle.
 - **`src/lib/server/storage/`** — the asset seam mirrors the db seam: local filesystem (`fs.ts`) or an S3-compatible bucket (`s3.ts`) on node, R2 (`r2.ts`) on Cloudflare, served through `routes/uploads/[...path]/`.
 - **`src/lib/admin-nav.ts`** — the admin sidebar. Reorder, remove or add sections there; `/admin` opens the first one. A removed section is only hidden: its pages still exist.

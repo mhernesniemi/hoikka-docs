@@ -16,7 +16,7 @@ src/lib/server/db/
 └── schema.ts      # table definitions (sqliteTable)
 ```
 
-`index.ts` exports a `db` Proxy. On node it's a `better-sqlite3` singleton created by `node.ts` — WAL mode, foreign keys on — which applies migrations from `drizzle/` on first use. On Cloudflare it's a Drizzle client over the D1 binding (`platform.env.DB`), cached per request. The default node database file is `./data/hoikka.db`, overridable with `DATABASE_URL`.
+`index.ts` exports a `db` Proxy. On node it's a `better-sqlite3` singleton created by `node.ts` — WAL mode, foreign keys on — which applies migrations from `drizzle/` on first use. On Cloudflare it's a Drizzle client over the D1 binding (`DB`). The default node database file is `./data/hoikka.db`, overridable with `DATABASE_URL`.
 
 The shared `Db` type deliberately excludes `transaction`: it would type-check on better-sqlite3, but D1 has no interactive transactions, so it would blow up in production. Use `atomic()` instead.
 
@@ -25,7 +25,7 @@ The shared `Db` type deliberately excludes `transaction`: it would type-check on
 `atomic()` (also in `index.ts`) runs several write statements atomically on both targets: D1 executes `batch()` as one implicit transaction; better-sqlite3 wraps the statements in `BEGIN`/`COMMIT`. Pass unexecuted Drizzle statements (don't await them yourself).
 
 ```typescript
-import { db, atomic } from "$lib/server/db";
+import { db, atomic } from "#lib/server/db/index.js";
 
 await atomic([
 	db.update(orders).set({ state: "cancelled" }).where(eq(orders.id, orderId)),
@@ -147,8 +147,8 @@ On the node target, foreign keys are switched off while migrations run, so a tab
 ## Querying
 
 ```typescript
-import { db } from "$lib/server/db";
-import { products } from "$lib/server/db/schema";
+import { db } from "#lib/server/db/index.js";
+import { products } from "#lib/server/db/schema.js";
 import { eq } from "drizzle-orm";
 
 // Simple query

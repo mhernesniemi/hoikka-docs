@@ -48,7 +48,7 @@ The `StripePayment` component handles loading Stripe.js, mounting the Payment El
 
 ```svelte
 <script lang="ts">
-	import StripePayment from "$lib/components/storefront/StripePayment.svelte";
+	import StripePayment from "#lib/components/storefront/StripePayment.svelte";
 
 	let stripeRef, elementsRef;
 </script>
@@ -115,7 +115,7 @@ await paymentService.refundPayment(paymentId, 1500);
 Implement the `PaymentProvider` interface:
 
 ```typescript
-import type { PaymentProvider } from "$lib/server/services/payments/types";
+import type { PaymentProvider } from "#lib/server/services/payments/types.js";
 
 class MyProvider implements PaymentProvider {
 	code = "my-provider";

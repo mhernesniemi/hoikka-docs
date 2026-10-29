@@ -10,7 +10,7 @@ Services import `db` from the database seam (`src/lib/server/db/index.ts`) rathe
 Manages products and their variants.
 
 ```typescript
-import { productService } from "$lib/server/services/products";
+import { productService } from "#lib/server/services/products.js";
 
 // Get by ID or slug — returns resolved flat fields
 const product = await productService.getById(123);
@@ -41,7 +41,7 @@ Variant operations (stock, pricing, SKU management) are also handled through `pr
 Manages the full order lifecycle, including cart operations.
 
 ```typescript
-import { orderService } from "$lib/server/services/orders";
+import { orderService } from "#lib/server/services/orders.js";
 
 // The cart is a cookie — an order row is created only when checkout starts,
 // snapshotting the cookie lines into order lines with 15-min stock reservations.
@@ -69,7 +69,7 @@ const order = await orderService.getByCode("ORD-EJXEDYIX");
 ## Customer Service
 
 ```typescript
-import { customerService } from "$lib/server/services/customers";
+import { customerService } from "#lib/server/services/customers.js";
 
 // Query
 const customer = await customerService.getById(1);
@@ -83,7 +83,7 @@ The customer record for a signed-in user is created by the customer sync in `src
 Manages translations for all 8 translatable entities. Uses Drizzle's `onConflictDoUpdate` for upserts.
 
 ```typescript
-import { translationService } from "$lib/server/services/translations";
+import { translationService } from "#lib/server/services/translations.js";
 
 // Get translations for an entity
 const rows = await translationService.getProductTranslations(productId);
@@ -146,7 +146,7 @@ than a class.
 ### Promotion math
 
 The discount formula lives in a single function, `calculateDiscount`
-(`$lib/promotion-utils.ts`, re-exported for services via
+(`#lib/promotion-utils.ts`, re-exported for services via
 `services/promotion-utils.ts`). It is shared by storefront price display and
 server-side order math, so the shown discount can't drift from the charged one.
 Per-order application (coupon codes, automatic promotions, totals recalculation)

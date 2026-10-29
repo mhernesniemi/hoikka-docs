@@ -26,7 +26,7 @@ No queue infrastructure, no external dependencies — the outbox table is the on
 Call `emitEvent` from a service or route, in the same flow as your writes:
 
 ```typescript filename="src/lib/remote/checkout.remote.ts"
-import { emitEvent } from "$lib/server/integrations/events";
+import { emitEvent } from "#lib/server/integrations/events.js";
 
 await emitEvent("order.paid", { code, total, customerEmail });
 // options: emitEvent(type, payload, { delayMs, maxAttempts })
@@ -37,15 +37,15 @@ await emitEvent("order.paid", { code, total, customerEmail });
 To make "the data changed" and "the event exists" inseparable, put the event insert in the same `atomic()` batch as the write it belongs to. `eventRow` builds the outbox row; `runAtomic` takes an explicit db, so the same code also runs from CLI scripts (`createNodeDb`) outside a request:
 
 ```typescript
-import { atomic } from "$lib/server/db";
-import { outbox, products } from "$lib/server/db/schema";
-import { eventRow } from "$lib/server/integrations/event-row";
+import { atomic } from "#lib/server/db/index.js";
+import { outbox, products } from "#lib/server/db/schema.js";
+import { eventRow } from "#lib/server/integrations/event-row.js";
 
 await atomic([
 	db.update(products).set({ name }).where(eq(products.id, id)),
 	db.insert(outbox).values(eventRow("product.renamed", { id, name }))
 ]);
-// outside a request: runAtomic(ownDb, [...]) from $lib/server/db/run-atomic
+// outside a request: runAtomic(ownDb, [...]) from #lib/server/db/run-atomic
 ```
 
 ## Handling events
@@ -53,11 +53,13 @@ await atomic([
 Register a handler per type in `src/lib/server/integrations/project.ts` — plain functions in a map, like the payment/shipping provider registries. A handler that throws is retried with backoff (up to `maxAttempts`, default 5):
 
 ```typescript filename="src/lib/server/integrations/project.ts"
+import * as env from "$app/env/private";
 import { registerHandler } from "./handlers.js";
 
 registerHandler("order.paid", async (payload) => {
 	// sync to an ERP, push to a PIM, notify Slack, send an outbound webhook...
-	const res = await fetch(process.env.ERP_URL, { method: "POST", body: JSON.stringify(payload) });
+	// (ERP_URL declared in src/env.ts)
+	const res = await fetch(env.ERP_URL!, { method: "POST", body: JSON.stringify(payload) });
 	if (!res.ok) throw new Error(`ERP sync failed: ${res.status}`); // → retried
 });
 ```
@@ -123,7 +125,7 @@ registerTask("erp-sync", {
 
 `POST /api/webhooks/[provider]` verifies an HMAC-SHA256 signature (Web Crypto, works on both targets) and records the payload to the outbox as `webhook.<provider>`. Add a handler for that type to process it.
 
-- Secret per provider: env `WEBHOOK_SECRET_<PROVIDER>` (uppercased), e.g. `WEBHOOK_SECRET_ERP`.
+- Secret per provider: env `WEBHOOK_SECRET_<PROVIDER>` (uppercased), e.g. `WEBHOOK_SECRET_ERP`, declared in `src/env.ts`.
 - Signature header: `x-hoikka-signature` (hex, optional `sha256=` prefix).
 
 ```typescript filename="src/lib/server/integrations/project.ts"

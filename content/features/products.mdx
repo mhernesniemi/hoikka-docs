@@ -80,7 +80,7 @@ await productService.create({
 });
 
 // Add a Finnish translation
-import { translationService } from "$lib/server/services/translations";
+import { translationService } from "#lib/server/services/translations.js";
 await translationService.upsertProductTranslation(productId, "fi", {
   name: "Sininen paita",
   slug: "sininen-paita",

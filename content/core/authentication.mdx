@@ -83,7 +83,7 @@ The client uses `src/lib/auth-client.ts` (`createAuthClient` with the email-OTP 
 `/sign-up` — email/password or Google OAuth.
 
 ```typescript
-import { authClient } from "$lib/auth-client";
+import { authClient } from "#lib/auth-client.js";
 
 await authClient.signUp.email({ name, email, password });
 

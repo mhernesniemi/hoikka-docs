@@ -12,13 +12,13 @@ treat EUR as effectively hardcoded.
 - **Formatting** goes through the shared `formatPrice` helper.
 
 ```typescript
-import { formatPrice } from "$lib/utils";
+import { formatPrice } from "#lib/utils.js";
 
 formatPrice(2999); // "29,99 €"
 ```
 
 `formatPrice(cents, currencyCode = BASE_CURRENCY)` formats via `Intl.NumberFormat`
-with a per-currency locale built into `$lib/utils` (fi-FI for EUR); unknown codes
+with a per-currency locale built into `#lib/utils` (fi-FI for EUR); unknown codes
 fall back to `"29.99 XXX"`. A `getCurrencySymbol(code)` helper exists as well.
 Because nothing ever passes a non-EUR currency, you will only see EUR output in
 practice.

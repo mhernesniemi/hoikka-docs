@@ -13,7 +13,7 @@ import {
   LANGUAGES,              // [{ code: "en", name: "English" }, { code: "fi", name: "Finnish" }]
   TRANSLATION_LANGUAGES,  // [{ code: "fi", name: "Finnish" }] — excludes default
   translationsToMap       // Utility for components
-} from "$lib/config/languages";
+} from "#lib/config/languages.js";
 ```
 
 - **`DEFAULT_LANGUAGE`** — The language stored on entity tables (e.g. `products.name`)
@@ -45,7 +45,7 @@ product.name; // "Blue Shirt" — directly from the products table
 Non-default languages are stored in translation tables and managed through the `TranslationService`:
 
 ```typescript
-import { translationService } from "$lib/server/services/translations";
+import { translationService } from "#lib/server/services/translations.js";
 
 // Save a Finnish translation
 await translationService.upsertProductTranslation(productId, "fi", {
@@ -79,7 +79,7 @@ Each translation table has a unique index on `(entity_id, language_code)`. The `
 A single service (`src/lib/server/services/translations.ts`) handles all 8 entities with a consistent API:
 
 ```typescript
-import { translationService } from "$lib/server/services/translations";
+import { translationService } from "#lib/server/services/translations.js";
 
 // Pattern: get + upsert per entity
 await translationService.getProductTranslations(productId);
@@ -145,7 +145,7 @@ Date display locale is configured in `src/lib/config/locale.ts`:
 export const DATE_LOCALE = "fi-FI"; // BCP 47 language tag
 ```
 
-All dates in the admin and storefront use `formatDate()` and `formatDateTime()` from `$lib/utils`, which read this value.
+All dates in the admin and storefront use `formatDate()` and `formatDateTime()` from `#lib/utils`, which read this value.
 
 ## Adding a New Language
 

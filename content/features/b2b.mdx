@@ -8,7 +8,7 @@ Hoikka supports B2B commerce through customer groups. Groups control pricing, ta
 Customer groups segment customers for B2B pricing, tax rules, and content access.
 
 ```typescript
-import { customerGroupService } from "$lib/server/services/customerGroups";
+import { customerGroupService } from "#lib/server/services/customerGroups.js";
 
 // Create a group
 const group = await customerGroupService.create({
@@ -38,7 +38,7 @@ Customer groups are managed at **Admin > Customers > Groups**. The group detail 
 Each product variant can have per-group prices. When a customer belongs to a group with a lower price, they see and pay the group price.
 
 ```typescript
-import { productService } from "$lib/server/services/products";
+import { productService } from "#lib/server/services/products.js";
 
 // Set a group price on a variant
 await productService.setGroupPrice(variantId, groupId, 1999); // 19.99 EUR
@@ -83,7 +83,7 @@ Group pricing is configured on the variant edit page (**Admin > Products > [Prod
 Collections can be marked private to hide them from the public storefront.
 
 ```typescript
-import { collectionService } from "$lib/server/services/collections";
+import { collectionService } from "#lib/server/services/collections.js";
 
 // Create a private collection
 await collectionService.create({
@@ -122,7 +122,7 @@ Customer groups can be marked as tax-exempt for B2B scenarios where VAT should n
 await customerGroupService.update(groupId, { isTaxExempt: true });
 
 // Check if a customer is tax-exempt (via any of their groups)
-import { taxService } from "$lib/server/services/tax";
+import { taxService } from "#lib/server/services/tax.js";
 const exempt = await taxService.isCustomerTaxExempt(customerId);
 ```
 

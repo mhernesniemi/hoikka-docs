@@ -72,7 +72,7 @@ export function erpSource(env: Record<string, string | undefined>): ErpSource {
 - **Paging.** `api.collection()` pages an OData-style `{ value: [...] }` collection with `$top`/`$skip`. Past `maxItems` (default 100 000), it throws rather than return a partial pull, because a partial pull would hide everything it missed.
 - **Other calls.** `api.json()` and `api.request()` cover single resources and writes back to the source. Both throw an `ApiError` (with `status` and `body`) on any non-2xx response.
 
-Implement `ErpSource` a second time with fixtures, so development, tests and demos don't need the ERP.
+Declare `ERP_URL`, `ERP_TOKEN_URL`, `ERP_CLIENT_ID` and `ERP_CLIENT_SECRET` in [`src/env.ts`](/getting-started/configuration), or `$app/env/private` won't have them. Implement `ErpSource` a second time with fixtures, so development, tests and demos don't need the ERP.
 
 <Callout type="info">
 	**Private CA.** Many ERPs serve a certificate from an internal CA. On the Node target, start the process with `NODE_EXTRA_CA_CERTS=/path/to/ca.pem`. Node reads it once at startup, so it goes in the container or service environment, not `.env`. The Cloudflare target can't trust a custom CA: the API needs a publicly trusted certificate there.
@@ -218,7 +218,7 @@ Keep `src/lib/server/erp/` on relative imports and pass the db in, so a seed scr
 Register the sync as a [scheduled task](/integrations/overview#scheduled-tasks). Its return value is the run summary shown in **Admin → Tasks**:
 
 ```typescript filename="src/lib/server/integrations/project.ts"
-import { env } from "$env/dynamic/private";
+import * as env from "$app/env/private";
 import { db } from "../db/index.js";
 import { sendEmail } from "../email.js";
 import { erpSource } from "../erp/source.js";

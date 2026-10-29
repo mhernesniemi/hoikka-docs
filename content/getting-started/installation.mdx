@@ -62,7 +62,7 @@ Copy `.env.example` to `.env` and set at least `BETTER_AUTH_SECRET`. See [Config
 - **Database** — keep `DATABASE_URL` on a mounted volume (e.g. `/data/hoikka.db`). Migrations from `MIGRATIONS_DIR` (default `./drizzle`, so copy that folder into the image) apply on startup. Once the database exists, set `DATABASE_MUST_EXIST=1` so a wrong path fails startup instead of creating an empty store (see below).
 - **Uploads** — either on the same volume (`UPLOADS_DIR`) or in an S3-compatible bucket (`S3_BUCKET` and friends, see [Configuration](/getting-started/configuration#s3-compatible-storage-node-target)). Move the resized-image cache with `CACHE_DIR` to keep it out of backups.
 - **Health check** — `GET /api/health` returns `200 {"ok":true}` when the database answers with the schema in place, `503` otherwise. It is public, uncached, and skips auth, so point the proxy or deploy tool's healthcheck at it.
-- **Origin** — behind a TLS-terminating proxy (kamal-proxy, Caddy, nginx) set `ORIGIN=https://your-store.example`, or adapter-node sees `http://` and rejects form posts as cross-site.
+- **HTTPS** — the server treats requests as HTTPS, as they are behind a TLS-terminating proxy (kamal-proxy, Caddy, nginx), so there is no origin to configure. Served over plain HTTP, the build rejects form posts as cross-site: check a build locally with `pnpm preview`, not `pnpm start`.
 - **Body size** — set `BODY_SIZE_LIMIT=209715200` so 200 MB digital deliverables can be uploaded (see `.env.example`).
 - **Background work** — the outbox and scheduled tasks run on an in-process interval, started by the first request (the health check counts). Overlapping containers during a rolling deploy are safe: each outbox event and each task run is claimed in the database before it runs, so nothing runs twice.
 
@@ -75,7 +75,7 @@ Copy `.env.example` to `.env` and set at least `BETTER_AUTH_SECRET`. See [Config
 docker run -p 3000:3000 \
   -v hoikka-data:/data \
   -e DATABASE_URL=/data/hoikka.db -e DATABASE_MUST_EXIST=1 -e UPLOADS_DIR=/data/uploads -e CACHE_DIR=/data/cache \
-  -e ORIGIN=https://store.example.com -e BETTER_AUTH_SECRET=... -e BODY_SIZE_LIMIT=209715200 \
+  -e BETTER_AUTH_SECRET=... -e BODY_SIZE_LIMIT=209715200 \
   my-store
 ```
 

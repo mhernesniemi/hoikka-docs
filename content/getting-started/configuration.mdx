@@ -2,11 +2,22 @@ import { Callout } from 'nextra/components'
 
 # Configuration
 
-Hoikka is configured entirely through environment variables, read via `$env/dynamic/*`. Copy `.env.example` to `.env` to get started.
+Hoikka is configured through environment variables. Copy `.env.example` to `.env` to get started.
+
+Every variable the app reads is declared in `src/env.ts` and read from `$app/env/private` (or `$app/env/public` for the `PUBLIC_` ones). All of them are optional. A variable that isn't declared there can't be read, so add your own to the list:
+
+```typescript filename="src/env.ts"
+export const variables = defineEnvVars({
+	// ...
+	WEBHOOK_SECRET_ERP: optional
+});
+```
+
+The `SSO_<ID>_*` variables are declared automatically for each provider in `hoikka.config.ts`.
 
 ## Deployment target
 
-A single variable decides how the app is built and where the database and storage come from. It is resolved by `hoikka-target.js` at the repo root (environment first, then `.env`) and shared by `svelte.config.js` (adapter) and `vite.config.ts` (module aliases).
+A single variable decides how the app is built and where the database and storage come from. `vite.config.ts` reads it (environment first, then `.env`) to pick the adapter and to swap the other target's modules for stubs.
 
 ```bash filename=".env"
 # "node" (default) or "cloudflare"
@@ -47,7 +58,7 @@ Not needed normally — auth derives the base URL from the incoming request. Set
 DATABASE_URL="./data/hoikka.db"
 ```
 
-Only used on the node target. The Cloudflare target ignores it and uses the D1 binding (`platform.env.DB`).
+Only used on the node target. The Cloudflare target ignores it and uses the D1 binding (`DB`).
 
 ```bash filename=".env"
 # Refuse to start when the DATABASE_URL file is missing
@@ -118,7 +129,7 @@ PUBLIC_SITE_URL=
 
 `SENTRY_DSN` sends server errors (5xx) and failing scheduled tasks to Sentry, without the SDK.
 
-Integration variables (`TASKS_SECRET`, `ORDER_WEBHOOK_URL`, `ORDER_WEBHOOK_SECRET`, `WEBHOOK_SECRET_<PROVIDER>`) are covered in [Integrations](/integrations/overview).
+Integration variables (`TASKS_SECRET`, `ORDER_WEBHOOK_URL`, `ORDER_WEBHOOK_SECRET`, and `WEBHOOK_SECRET_<PROVIDER>`, which you declare in `src/env.ts`) are covered in [Integrations](/integrations/overview).
 
 <Callout type="info">
 On Cloudflare, secrets are set with `wrangler secret put <NAME>` rather than an `.env` file.

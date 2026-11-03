@@ -118,7 +118,9 @@ variant_facet_values (variantId, facetValueId)
 
 ## Full-text search
 
-Product search uses SQLite **FTS5**. The virtual table `product_search_fts` is created by a raw-SQL migration (`drizzle/0001_product_search_fts.sql`) with `unicode61` tokenization and diacritic removal (so Finnish "äöå" matches their ASCII forms). SQL triggers (`drizzle/0003_fts_stock_price_triggers.sql`) keep the index's stock and price columns in sync as variants change.
+Product search uses SQLite **FTS5**. The virtual table `product_search_fts` is created by a raw-SQL migration (`drizzle/0001_product_search_fts.sql`) with `unicode61` tokenization and diacritic removal (so Finnish "äöå" matches their ASCII forms). SQL triggers (`drizzle/0003_fts_stock_price_triggers.sql`) keep the index's stock and price columns in sync as variants change, and others (`drizzle/0020_search_index_triggers.sql`) bump `search_index_version` so the in-memory facet index rebuilds (see [Search](/features/search-and-categories#large-catalogs)).
+
+On the node target the database runs `PRAGMA optimize = 0x10002` when opened, and `reindexAll` runs `PRAGMA optimize` after a full rebuild, so the query planner has table statistics. Without them it picks bad indexes as the catalog grows (5 ms instead of 0.04 ms to price a page of 24 products at 36,000).
 
 ## Migrations
 

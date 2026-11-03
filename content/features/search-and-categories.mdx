@@ -32,6 +32,14 @@ const result = await listProducts({
 
 `parseListingParams(url)` reads `q`, `sort`, `page`, `facet_*`, and `price_min`/`price_max` from the request URL into a `listProducts` options object.
 
+### Large Catalogs
+
+Filtering and counting run on an in-memory facet index (`src/lib/server/services/facet-index.ts`), not in SQL: each facet value is a bitset over the public products, so a filter is a few AND/ORs and the counts are one pass over the matching products. SQLite only runs the text match and reads the rows of the requested page. A listing over 36,000 products takes a few milliseconds, where counting in SQL took 100–300 ms.
+
+The index is rebuilt (about 80 ms at that size) when the `search_index_version` row changes. Triggers bump it when variants or facet values change (migration `drizzle/0020`), and `reindexProduct` / `removeFromIndex` bump it after writing the FTS table, so writes from any process, an import script included, are picked up on the next request. Code that writes `product_search_fts` directly must call `bumpIndexVersion(db)` from `reindex.ts`.
+
+Each server process (or Worker isolate) holds its own copy: about 10 MB for 36,000 products. On Cloudflare, every isolate reads the product–facet links once when it first lists products and again after a catalog change, which D1 bills as row reads.
+
 Each listing page (`src/routes/(storefront)/products`, `category/[...path]`, `collections/[id]/[slug]`) calls `listProducts` in its load and passes a `listing` prop to `ProductListing.svelte`.
 
 ### Header Search

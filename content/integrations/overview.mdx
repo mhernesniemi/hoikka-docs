@@ -50,7 +50,7 @@ await atomic([
 
 ## Handling events
 
-Register a handler per type in `src/lib/server/integrations/project.ts` — plain functions in a map, like the payment/shipping provider registries. A handler that throws is retried with backoff (up to `maxAttempts`, default 5):
+Register handlers in `src/lib/server/integrations/project.ts` — plain functions in a map, like the payment/shipping provider registries. A handler that throws is retried with backoff (up to `maxAttempts`, default 5):
 
 ```typescript filename="src/lib/server/integrations/project.ts"
 import * as env from "$app/env/private";
@@ -68,7 +68,16 @@ registerHandler("order.paid", async (payload) => {
 	`project.ts` is imported once from `hooks.server.ts`. Don't register from a module that `handlers.ts` or `tasks.ts` imports: it would run before their registries exist.
 </Callout>
 
-The built-in example forwards `order.paid` to `ORDER_WEBHOOK_URL` (HMAC-signed with `ORDER_WEBHOOK_SECRET` if set), and is a no-op when the URL isn't configured.
+An event type can have several handlers, told apart by name. Each one is retried on its own, so keep separate steps in separate handlers: when the ERP export succeeds and the confirmation email fails, the retry sends only the email.
+
+```typescript filename="src/lib/server/integrations/project.ts"
+registerHandler("order.paid", exportToErp, { name: "erp" });
+registerHandler("order.paid", sendConfirmation, { name: "confirmation-email" });
+```
+
+The name records which handlers have succeeded across retries, so keep it stable. Registering a name again replaces that handler; without a name a handler is `"default"`.
+
+The built-in `webhook` handler forwards `order.paid` to `ORDER_WEBHOOK_URL` (HMAC-signed with `ORDER_WEBHOOK_SECRET` if set), and is a no-op when the URL isn't configured.
 
 ## Triggering the drain
 

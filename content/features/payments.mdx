@@ -16,6 +16,19 @@ Hoikka uses a provider pattern for payments. Stripe is integrated with real Stri
 7. Order is completed → redirect to thank-you
 ```
 
+### Invoice
+
+For B2B stores, or any store whose ERP bills its orders: add `invoice()` (from `src/lib/config-schema/providers.ts`) to `payments` in `hoikka.config.ts`. Nothing is charged online.
+
+```
+1. Customer reaches checkout
+2. Select invoice
+3. Click "Place Order" → payment created, settled and order completed in one step
+4. Redirect to thank-you
+```
+
+The order reaches `paid` like any settled order, so `order.paid` handlers (an ERP export, a confirmation email) run as usual. A refund only records the amount; issue the credit note where the invoice was made.
+
 ### Mock (development)
 
 ```

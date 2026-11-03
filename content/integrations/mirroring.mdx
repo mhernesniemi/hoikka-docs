@@ -71,6 +71,7 @@ export function erpSource(env: Record<string, string | undefined>): ErpSource {
 - **Retries.** Each attempt times out after `timeoutMs` (default 30 s). Network errors, timeouts and `5xx` are retried with backoff (`retries`, default 2), but only for idempotent methods, since a `POST` that timed out may have gone through. A `429` is retried for any method after its `Retry-After`, unless that's over a minute. Other `4xx` responses are never retried.
 - **Paging.** `api.collection()` pages an OData-style `{ value: [...] }` collection with `$top`/`$skip`. Past `maxItems` (default 100 000), it throws rather than return a partial pull, because a partial pull would hide everything it missed.
 - **Other calls.** `api.json()` and `api.request()` cover single resources and writes back to the source. Both throw an `ApiError` (with `status` and `body`) on any non-2xx response.
+- **Read-only.** `readOnly: true` refuses anything but `GET`, `HEAD` and `OPTIONS` with an `ApiReadOnlyError`, before it reaches the network, so development against a production system can't change it. For an API that reads through `POST` (SuiteQL, GraphQL), pass a function instead: `readOnly: ({ method, url }) => method === "GET" || url.endsWith("/query")`. Token requests are always allowed.
 
 Declare `ERP_URL`, `ERP_TOKEN_URL`, `ERP_CLIENT_ID` and `ERP_CLIENT_SECRET` in [`src/env.ts`](/getting-started/configuration), or `$app/env/private` won't have them. Implement `ErpSource` a second time with fixtures, so development, tests and demos don't need the ERP.
 

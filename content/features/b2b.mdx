@@ -35,7 +35,7 @@ Customer groups are managed at **Admin > Customers > Groups**. The group detail 
 
 ## Customer Group Pricing
 
-Each product variant can have per-group prices. When a customer belongs to a group with a lower price, they see and pay the group price.
+Each product variant can have per-group prices. A customer in a group with a price for the variant sees and pays that price, whether it is below or above the base price (a B2B price list). With several groups, the lowest of their prices applies.
 
 ```typescript
 import { productService } from "#lib/server/services/products.js";
@@ -51,14 +51,14 @@ const groupPrices = await productService.resolveGroupPrices(variantIds, customer
 // Map<variantId, lowest applicable group price>; no entry if none apply
 ```
 
-In the cart, the unit price is `min(basePrice, lowest group price)`.
+In the cart, the unit price is the lowest group price, or the base price when no group price applies.
 
 ### How Pricing Resolves
 
 1. Customer adds a variant to their cart
 2. The system looks up the customer's group memberships
 3. It finds all group prices for that variant matching those groups
-4. The lowest price wins (compared against the base price)
+4. The lowest of those group prices applies, replacing the base price
 5. The resolved price is stored as a snapshot on the order line
 
 If the customer has no groups or no group prices apply, the base price is used.

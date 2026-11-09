@@ -71,7 +71,7 @@ const status = await shippingService.trackShipment(orderId);
 
 ### Flat Rate
 
-A simple flat-rate provider ships with Hoikka for development and demos. It returns a single "Standard Shipping" rate at a fixed price.
+A simple flat-rate provider ships with Hoikka for development and demos. It returns a single rate at a fixed price, named "Standard Shipping" unless you pass a label: `flatRate({ amount: 590, label: "Home delivery" })`. The label becomes the method's name on a new store; once an admin renames the method, the admin name wins.
 
 To swap in a real carrier, implement the `ShippingProvider` interface and register it (see [Providers](/core/providers)).
 

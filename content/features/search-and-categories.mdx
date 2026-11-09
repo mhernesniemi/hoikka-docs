@@ -10,6 +10,8 @@ Product search runs **server-side** over a SQLite FTS5 index (`product_search_ft
 The index is populated by `src/lib/server/services/reindex.ts` and kept stock/price-fresh by SQL triggers (migration `drizzle/0003`).
 </Callout>
 
+Search matches product names (ranked first) and descriptions. Tick **Searchable** on a facet in **Admin → Facets** to match its value names too, so a search for a brand or a region finds products whose names don't mention it. Leave it off for short values like sizes, or "m" matches every medium product. Saving the facet reindexes its products.
+
 ### Listing Pages
 
 `listProducts(options)` in `src/lib/server/services/product-search.ts` is the single entry point for the storefront listing pages (products, category, collection). It handles free-text FTS search, facet filters with disjunctive counts, price range, sort, and pagination — all server-side.

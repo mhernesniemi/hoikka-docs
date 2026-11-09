@@ -27,6 +27,8 @@ db/schema.ts (Drizzle ORM over SQLite / D1)
 +page.svelte (view)
 ```
 
+On the Cloudflare target the edge cache answers guests from a shared cache for the storefront routes listed in `CACHED_PATHS` in `src/lib/server/edge-cache.ts` (a path covers everything below it, `"/"` only the front page). A storefront with other routes edits that list; never add per-visitor pages like the cart, checkout or account.
+
 ## Service pattern
 
 Business logic lives in singleton services under `src/lib/server/services/`:

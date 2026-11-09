@@ -23,7 +23,7 @@ env.SENTRY_DSN = "https://key@o1.ingest.sentry.io/1";
 
 ## End-to-end tests
 
-E2E tests use [Playwright](https://playwright.dev/) and live in `e2e/` (11 tests across the smoke and checkout specs). `pnpm test:e2e` boots its own dev server (on a dedicated port) unless `BASE_URL` is set.
+E2E tests use [Playwright](https://playwright.dev/). Specs in `e2e/` cover the admin and core flows; `e2e/storefront/` drives the starter storefront (smoke, checkout, receipt access, provisioned customers, custom fields on pages). When you replace the storefront, rewrite or delete `e2e/storefront/` with it. `pnpm test:e2e` boots its own dev server (on a dedicated port) on a fresh seeded database unless `BASE_URL` is set.
 
 ```bash
 # Boots its own server
